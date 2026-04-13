@@ -13,6 +13,23 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [3.0.1] — Trio de correctifs UX/Sync
+
+### Ajouté
+- **Suppression d'objets du panier avant paiement** : chaque ligne du panier déplié contient deux boutons `−` (retire une unité, supprime la ligne à qté 0) et `🗑` (supprime la ligne entière). Toast d'info au retrait.
+
+### Corrigé
+- **Renommage de l'appareil** acceptait seulement les chiffres (hack `genModalText` jamais appelé). Refonte de `genModal` avec un paramètre `inputType` propre ('text' ou 'number'). Validation : 2-30 caractères alphanumériques + espace/tiret/underscore, accents unicode acceptés, caractères spéciaux rejetés avec toast explicite.
+- **Fusion multi-fichiers pouvait créer des faux doublons** : le `Set existingIds` n'était pas mis à jour dans la boucle d'import. Si un batch contenait deux fichiers avec la même vente, elle était ajoutée deux fois.
+  - Nouvelle logique : `Map knownKeys` reconstruite par fichier et mise à jour après chaque ajout → dédup fiable intra-batch.
+  - Nouvelle fonction `venteDedupeKey(v)` : utilise l'ID si présent, sinon clé synthétique à partir du contenu (deviceId + timestamp + total + items triés par ID). Idempotente même si l'ordre des items varie entre exports.
+  - Nouvelle fonction `venteEstValide(v)` : rejette les ventes à structure cassée (items vide, total non numérique, aucune info temporelle).
+  - Détection de conflits (même clé mais total/items divergents) loggée dans la console pour investigation.
+  - Rapport détaillé : "X ajoutées · Y déjà là · Z invalides · ⚠ N conflits" au lieu de "ajoutées/doublons".
+  - Tri chronologique décroissant des ventes après merge.
+
+---
+
 ## [3.0.0] — PWA installable + variante portable
 
 ### Ajouté

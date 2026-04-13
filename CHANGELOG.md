@@ -13,6 +13,29 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [3.1.1] — Push conditionnel (scalabilité cloud 4+ téléphones)
+
+### Corrigé
+- **Quota Cloudflare KV respecté** même avec 4+ téléphones. Avant,
+  chaque cycle de polling (30 s) poussait l'état complet au serveur,
+  consommant ~1 write par phone par 30 s → 4 phones × 8 h = 3 840
+  writes/jour → **dépassait** le quota free tier (1 000 writes/jour).
+- Nouveau : `cloudPush()` calcule une empreinte structurelle du
+  payload (nb produits + nb ventes + timestamps max + deviceLabel)
+  et **skippe le push si l'empreinte est identique au précédent**.
+  L'empreinte est persistée dans localStorage pour survivre aux
+  rechargements.
+- Invalidation automatique de l'empreinte après reset session,
+  import/restore JSON, ou sync QR qui modifie l'état — pour que le
+  prochain push aille bien jusqu'au cloud.
+- Bouton "⟳ Sync maintenant" passe `{force:true}` pour bypasser le
+  skip (utile pour retester après une erreur serveur).
+- Simulation Node : sur 960 cycles de polling (8 h) avec 50 ventes
+  réparties → **51 pushes** au lieu de 960 (réduction 19×). 4 phones
+  = ~200 writes/jour, soit 20 % du quota free tier (vs 380 % avant).
+
+---
+
 ## [3.1.0] — Sync stocks multi-téléphones (QR P2P + Cloud auto)
 
 Synchronisation cohérente du stock + des ventes entre plusieurs téléphones

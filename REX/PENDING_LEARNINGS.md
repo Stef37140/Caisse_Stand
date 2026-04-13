@@ -19,6 +19,15 @@ Ce fichier sert de **bridge** entre les sessions Claude Code sur différents pos
 
 *(Ajouter ici les apprentissages de la session en cours)*
 
+### Session 2026-04-13 (4) — Push conditionnel cloud (v3.1.1)
+
+- **[2026-04-13] Push idempotent + fingerprint structurel** : polling naïf qui pousse à chaque cycle consomme bien trop d'écritures quand on vise un quota free tier. Solution : empreinte bon marché (pas de crypto, juste count + timestamps max) persistée en localStorage. Skip si identique au dernier push. Réduction mesurée 19× (960 → 51 pushes sur 8 h de polling avec 50 ventes). Invalidation manuelle sur reset/import/sync-QR pour ne pas bloquer les mises à jour légitimes.
+  - À intégrer dans : `docs/ARCHITECTURE.md` (patterns sync)
+
+- **[2026-04-13] Rule de pouce quotas free tier** : avant d'activer un polling N-secondes vers un service tiers, toujours calculer : `N_phones × cycles/h × heures_actif = writes/jour`. Comparer au quota documenté. Si ça dépasse, ajouter un mécanisme de skip (hash, etag, delta). Pareil côté reads (moins critique car les quotas reads sont toujours 100× plus généreux que writes).
+
+---
+
 ### Session 2026-04-13 (3) — Sync stocks multi-téléphones v3.1.0
 
 - **[2026-04-13] Stock event-sourced > stock muté** : pour permettre la sync multi-appareils, ne JAMAIS muter le stock directement à la vente. Modèle : `produit.stock` = baseline horodatée par `stockSetAt`, stock affiché = baseline − ventes du produit après baseline − panier. Conséquence magique : importer les ventes d'un autre téléphone décrémente automatiquement le stock chez tous, sans logique de merge complexe. Last-write-wins ne fonctionne que si on change cette structure.

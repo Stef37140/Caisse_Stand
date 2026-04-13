@@ -19,6 +19,20 @@ Ce fichier sert de **bridge** entre les sessions Claude Code sur différents pos
 
 *(Ajouter ici les apprentissages de la session en cours)*
 
+### Session 2026-04-13 (5) — Référentiel personnalisable (v3.2.0)
+
+- **[2026-04-13] Tombstones aussi pour les items de référentiel** : même problème que pour les produits — supprimer un item de taxonomie en `filter()` rend la sync incohérente (un autre tel re-créerait l'item supprimé). Solution : `deletedAt` posé, filtre des tombstones à l'affichage. Le merge LWW propage la suppression correctement. Pattern à généraliser : **toute donnée syncable doit utiliser des tombstones, jamais une suppression dure**.
+
+- **[2026-04-13] Renommage évité grâce au nom-comme-clé** : utiliser le nom comme identifiant de l'item (au lieu d'un ID interne) évite la cascade rename (mettre à jour tous les produits référençant l'ancien nom) qui devient un cauchemar en sync (que faire si 2 phones renomment différemment ?). Trade-off : pas de renommage direct, l'utilisateur doit créer + déplacer + supprimer. Pour ce projet, accepté ; pour un projet plus ambitieux, prévoir des IDs internes dès le départ.
+
+- **[2026-04-13] Versionning du payload sync** : ajouter un champ `v` dans le payload (V1/V2 ici) permet d'évoluer le format sans casser les vieux téléphones. Le `applySyncPayload` accepte les anciennes versions en mode dégradé (V1 sans taxonomie). Pattern essentiel pour toute sync entre clients à versions hétérogènes.
+
+- **[2026-04-13] Garde-fou avant suppression** : `taxoEstUtilise(type, nom)` empêche la suppression si un produit actif référence l'item. Évite les orphelins (produits avec catégorie inexistante). UI : tag "utilisé" + bouton 🗑 grisé pour signaler visuellement avant le tap. Pattern : **toute suppression dans une donnée référencée doit checker les références actives** (foreign key check côté client).
+
+- **[2026-04-13] Palette Tailwind discrète** : pour une UX simple, fournir une palette pré-définie de ~12 couleurs Tailwind (`bg-orange-500`, `bg-purple-600`, etc.) au lieu d'un color picker libre. Click-to-select dans une grille 6 cols, ring-4 pour la sélection. Évite le dilemme du choix et garantit que les couleurs jouent bien avec le reste du design system.
+
+---
+
 ### Session 2026-04-13 (4) — Push conditionnel cloud (v3.1.1)
 
 - **[2026-04-13] Push idempotent + fingerprint structurel** : polling naïf qui pousse à chaque cycle consomme bien trop d'écritures quand on vise un quota free tier. Solution : empreinte bon marché (pas de crypto, juste count + timestamps max) persistée en localStorage. Skip si identique au dernier push. Réduction mesurée 19× (960 → 51 pushes sur 8 h de polling avec 50 ventes). Invalidation manuelle sur reset/import/sync-QR pour ne pas bloquer les mises à jour légitimes.

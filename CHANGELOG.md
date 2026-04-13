@@ -7,9 +7,62 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 ## [Unreleased]
 
 ### À venir
-- Images produits (remplacement des emojis) — V3.2
-- Archivage des sessions clôturées — V3.3
-- Rendu monnaie avancé avec coupures rapides — V3.4
+- Images produits (remplacement des emojis) — V3.3
+- Archivage des sessions clôturées — V3.4
+- Rendu monnaie avancé avec coupures rapides — V3.5
+
+---
+
+## [3.2.0] — Référentiel personnalisable (catégories, modèles, tailles)
+
+L'utilisateur peut désormais créer ses propres catégories (Tote bag, Body,
+T-Shirt enfant, Débardeur femme…), modèles (nouveaux dessins) et tailles
+(XS, 36, 38, Unique…) sans toucher au code. Le référentiel est synchronisé
+entre tous les téléphones via QR ou cloud.
+
+### Ajouté
+
+- **Référentiel persistant** `taxonomie = { categories, modeles, tailles }`
+  stocké dans `localStorage.caisse_taxonomie`. Chaque item porte
+  `lastModified` + `deletedAt?` pour la sync (last-write-wins par nom).
+- **Migration douce** au premier load : les valeurs hardcodées V3.1
+  (T-Shirt/Pull/Sweat, 7 modèles emoji, S/M/L/XL/XXL) sont reprises
+  comme défauts pour ne pas casser l'existant.
+- **Bouton ⚙ Référentiel** dans l'onglet Stock à côté du bouton d'ajout
+  produit.
+- **Modal "Gérer le référentiel"** avec 3 onglets :
+  - **Catégories** : nom + couleur (palette de 12 couleurs Tailwind à
+    sélectionner d'un tap)
+  - **Modèles** : nom + emoji (clavier emoji mobile via 🌐)
+  - **Tailles** : nom + ordre d'affichage (numérique)
+- Tag "utilisé" sur chaque item référencé par au moins un produit actif.
+  Suppression bloquée dans ce cas (sécurité contre les orphelins).
+- Suppression via tombstone : `deletedAt` posé au lieu de retrait du
+  tableau, pour propager aux autres téléphones lors de la sync.
+- Modal "Ajouter / Éditer un produit" : les `<select>` catégorie /
+  modèle / taille sont peuplés dynamiquement depuis la taxonomie. Si un
+  produit existant référence un item inconnu (cas de désync), l'option
+  est ajoutée en tête avec ⚠.
+
+### Modifié
+
+- `buildSyncPayload` bumpe à `v=2` et inclut la taxonomie filtrée par
+  cutoff.
+- `applySyncPayload` accepte v=1 ET v=2 (backward-compat) et merge la
+  taxonomie en LWW. Compteurs `taxoAjoutes / taxoMaj / taxoSupprimes`
+  ajoutés au rapport.
+- Tous les rendus utilisent `categorieCouleur(nom)` et `modeleIcone(nom)`
+  au lieu des constantes `COULEURS_CAT[nom]` / `ICONS_MODELE[nom]` (qui
+  restent en fallback pour la rétro-compat des données pré-migration).
+- Modifications du référentiel invalident `cloudClearPushFp()` pour
+  propager immédiatement au cloud.
+
+### Limitation connue
+
+- **Pas de renommage direct** d'un item de référentiel : la clé est le
+  nom. Pour renommer, créer le nouveau, déplacer les produits via leur
+  édition, puis supprimer l'ancien. Compromis pragmatique pour éviter
+  la cascade rename complexe en sync (qui demanderait des IDs internes).
 
 ---
 

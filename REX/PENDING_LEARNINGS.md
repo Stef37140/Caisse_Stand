@@ -19,14 +19,32 @@ Ce fichier sert de **bridge** entre les sessions Claude Code sur différents pos
 
 *(Ajouter ici les apprentissages de la session en cours)*
 
-### Exemple de format
+### Session 2026-04-13 — Cleanup repo + V3.0 PWA installable
 
-```
-- **[Date] Catégorie** : Description du pattern, bug, découverte, décision
-  - Contexte :
-  - Solution / ce qu'il faut retenir :
-  - À intégrer dans : CLAUDE.md / docs/ARCHITECTURE.md / docs/BUGS_RESOLUS.md / ROADMAP.md
-```
+- **[2026-04-13] Repo hygiene** : le repo avait été uploadé avec une série de fichiers dont les **noms ne correspondaient pas aux contenus** (ex: `index.html` contenait le REX, `README.md` contenait le CHANGELOG, `ROADMAP.md` était un duplicata de `CLAUDE.md`, `PROMPT_CLAUDE_CODE.md` était le `.gitignore`). Nettoyé en plusieurs commits atomiques `chore:` et `docs:`.
+  - **À retenir** : en début de session, toujours **vérifier le contenu réel** des fichiers évoqués dans `CLAUDE.md` avant de les modifier. Un `ls` + quelques `head` peuvent révéler ce type de mélange.
+  - À intégrer dans : `CLAUDE.md` (workflow de démarrage : "vérifier que les fichiers listés contiennent bien ce que leur nom annonce")
+
+- **[2026-04-13] PWA iOS vs Android — deux mondes séparés** :
+  - Android Chromium expose `beforeinstallprompt` → on peut déclencher un bouton "Installer" custom après avoir `preventDefault()` + stocké le `event` pour appeler `.prompt()` plus tard sur clic utilisateur
+  - iOS Safari **n'expose aucune API d'installation** → il faut détecter iOS via l'UA et afficher des **instructions manuelles** "Partager → Sur l'écran d'accueil"
+  - Détecter le mode installé : `window.matchMedia('(display-mode: standalone)').matches` + legacy `window.navigator.standalone === true` (iOS only)
+  - À intégrer dans : `docs/ARCHITECTURE.md` (section PWA)
+
+- **[2026-04-13] Service worker skipWaiting contrôlé** : ne **jamais** faire `self.skipWaiting()` dans `install` sans précaution — ça remplace le SW actif au milieu d'une session et peut casser des requêtes en cours. Pattern propre :
+  1. Le nouveau SW installe et attend en `waiting`
+  2. La page détecte via `registration.addEventListener('updatefound')` puis `statechange === 'installed'`
+  3. Affiche un bandeau "Nouvelle version dispo"
+  4. Sur clic utilisateur, la page envoie `reg.waiting.postMessage({type:'SKIP_WAITING'})`
+  5. Le SW reçoit → `self.skipWaiting()` → `controllerchange` sur la page → `window.location.reload()`
+  - À intégrer dans : `docs/ARCHITECTURE.md` (section PWA)
+
+- **[2026-04-13] Cache-first + CDN cross-origin** : le CDN Tailwind est cross-origin, les réponses peuvent être opaques. Stratégie choisie : network-first avec fallback cache, cache mis à jour en arrière-plan après chaque fetch réseau réussi. L'app est chargée une fois avec réseau, le SW met Tailwind en cache, puis ça marche offline.
+  - À intégrer dans : `docs/ARCHITECTURE.md` (stratégies de cache)
+
+- **[2026-04-13] Icônes maskable — safe zone 80 %** : pour que Android ne crop pas l'icône dans une pastille ronde, l'élément graphique doit tenir dans un cercle de diamètre ~80 % du canvas (ici icône scalée à 70 % par prudence), avec le fond occupant 100 %. Les icônes "any" peuvent avoir des coins arrondis propres (`rx 22 %` donne un rendu iOS-like).
+
+- **[2026-04-13] Génération d'icônes sans outil dédié** : Python + `cairosvg` (`pip install cairosvg Pillow`) suffit. Sources SVG commitées dans `icons/icon.svg` et `icons/icon-maskable.svg` pour édition future — si besoin de regénérer, script dans le commit `feat(pwa): add installable icons`.
 
 ---
 

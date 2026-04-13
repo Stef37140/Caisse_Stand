@@ -34,3 +34,7 @@ package-lock.json
 
 # Claude Code state local
 .claude/
+
+# Builds générés localement (script build-portable.py)
+dist/*.html
+dist/*.cache

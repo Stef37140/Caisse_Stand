@@ -146,6 +146,7 @@
       <h3 class="font-bold text-sm text-slate-700 mb-2">📱 Ventilation par appareil</h3>
       <div id="device-breakdown" class="space-y-1 text-xs"></div>
     </div>
+    <!-- PWA-CARDS-START : retiré par scripts/build-portable.py -->
     <div id="install-card" class="hidden bg-emerald-50 border border-emerald-200 p-3 rounded-lg mb-3">
       <h3 class="font-bold text-sm text-emerald-900 mb-1">📲 Installer l'app</h3>
       <p class="text-xs text-emerald-800 mb-2" id="install-hint">Installe Caisse Stand comme une vraie app pour un accès rapide hors ligne.</p>
@@ -156,6 +157,7 @@
       <p class="text-xs text-amber-800 mb-2">Une mise à jour a été téléchargée. Recharger pour l'activer ?</p>
       <button id="btn-update-app" class="w-full bg-amber-600 text-white py-2 rounded-lg text-sm font-semibold">Recharger avec la nouvelle version</button>
     </div>
+    <!-- PWA-CARDS-END -->
     <div class="bg-slate-50 border border-slate-200 p-3 rounded-lg text-xs text-slate-600">
       <div><strong>Cet appareil :</strong> <span id="device-id-full" class="font-mono"></span></div>
       <div class="mt-1"><strong>Dernière sauvegarde :</strong> <span id="last-backup">jamais</span></div>
@@ -365,13 +367,18 @@ function showToast(msg, type = 'success') {
 let genCallback = null;
 
 function genModal(opts) {
-  // opts : { title, message, input (bool), inputValue, okLabel, cancelLabel, onOk, showRendu (bool), totalDu }
+  // opts : { title, message, input (bool), inputType ('number'|'text'), inputValue,
+  //         inputMode, maxLength, okLabel, cancelLabel, onOk, showRendu (bool), totalDu }
   document.getElementById('gen-title').textContent = opts.title || '';
   document.getElementById('gen-message').textContent = opts.message || '';
   const wrap = document.getElementById('gen-input-wrap');
   const inp = document.getElementById('gen-input');
   if (opts.input) {
     wrap.classList.remove('hidden');
+    const type = opts.inputType || 'number';
+    inp.type = type;
+    inp.inputMode = opts.inputMode || (type === 'number' ? 'decimal' : 'text');
+    inp.maxLength = opts.maxLength || (type === 'text' ? 30 : 524288); // 524288 = défaut HTML
     inp.value = opts.inputValue !== undefined ? opts.inputValue : '';
     inp.placeholder = opts.placeholder || '';
     setTimeout(() => inp.focus(), 100);
@@ -530,12 +537,39 @@ function renderPanier() {
   document.getElementById('panier-total-mini').textContent = total + ' €';
   document.getElementById('panier-items').innerHTML = panier.length === 0
     ? '<div class="text-slate-400 text-xs text-center py-2">Panier vide</div>'
-    : panier.map(i => `
-      <div class="flex justify-between items-center text-sm bg-slate-50 px-2 py-1 rounded">
-        <span>${i.qte}× ${i.label}</span>
-        <span class="font-semibold">${i.qte * i.prix} €</span>
+    : panier.map((i, idx) => `
+      <div class="flex justify-between items-center text-sm bg-slate-50 px-2 py-1 rounded gap-2">
+        <span class="flex-1 min-w-0 truncate">${i.qte}× ${i.label}</span>
+        <span class="font-semibold w-14 text-right">${i.qte * i.prix} €</span>
+        <button data-action="panier-dec" data-idx="${idx}" aria-label="Retirer une unité"
+                class="w-8 h-8 flex items-center justify-center rounded bg-slate-300 text-slate-800 font-bold active:bg-slate-400">−</button>
+        <button data-action="panier-del" data-idx="${idx}" aria-label="Supprimer la ligne"
+                class="w-8 h-8 flex items-center justify-center rounded bg-red-100 text-red-700 active:bg-red-200">🗑</button>
       </div>
     `).join('');
+}
+
+// Décrémente de 1 la qté de la ligne à l'index idx. Supprime la ligne si qté = 0.
+function decrementerLignePanier(idx) {
+  const ligne = panier[idx];
+  if (!ligne) return;
+  if (ligne.qte > 1) {
+    ligne.qte--;
+  } else {
+    panier.splice(idx, 1);
+  }
+  renderPanier();
+  renderCaisse(); // pour restaurer le stockDispo visuel
+}
+
+// Supprime toute la ligne à l'index idx.
+function supprimerLignePanier(idx) {
+  const ligne = panier[idx];
+  if (!ligne) return;
+  panier.splice(idx, 1);
+  renderPanier();
+  renderCaisse();
+  showToast(`${ligne.label} retiré du panier`, 'info');
 }
 
 function viderPanier() {
@@ -914,10 +948,42 @@ function demarrerImportRestore() {
   });
 }
 
+// Génère une clé de déduplication robuste pour une vente.
+// - Si la vente a un id : on l'utilise (format V2+ : deviceId_timestamp_random)
+// - Sinon (legacy / JSON édité à la main) : on construit une clé synthétique
+//   à partir du contenu (deviceId + timestamp + total + qtés) pour éviter
+//   les faux doublons tout en détectant les vrais.
+function venteDedupeKey(v) {
+  if (v && v.id) return 'id:' + v.id;
+  const items = Array.isArray(v.items)
+    ? v.items.map(it => `${it.id}x${it.qte}`).sort().join(',')
+    : '';
+  return `synth:${v.deviceId || '?'}|${v.timestamp || v.date || '?'}|${v.total || 0}|${items}`;
+}
+
+// Vérifie qu'une vente a la structure minimale attendue.
+function venteEstValide(v) {
+  return Boolean(
+    v
+    && typeof v === 'object'
+    && Array.isArray(v.items) && v.items.length > 0
+    && typeof v.total === 'number' && !isNaN(v.total)
+    && (v.timestamp || v.date) // au moins une info temporelle
+  );
+}
+
 async function handleImport(e, mode) {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
-  let totalNew = 0, totalDup = 0;
+
+  // Compteurs de fusion
+  let totalNew = 0;       // ventes ajoutées
+  let totalAlready = 0;   // déjà présentes en local avant import
+  let totalBatch = 0;     // doublons internes au batch d'import (entre plusieurs fichiers)
+  let totalInvalid = 0;   // ventes rejetées (structure invalide)
+  let totalConflict = 0;  // même ID mais contenu différent (anomalie)
+  const conflicts = [];
+
   for (const file of files) {
     try {
       const text = await file.text();
@@ -932,23 +998,61 @@ async function handleImport(e, mode) {
         fondCaisse = data.fondCaisse || 0;
         showToast(`Restauré depuis ${file.name}`);
         break;
-      } else {
-        const existingIds = new Set(ventes.map(v => v.id));
-        data.ventes.forEach(v => {
-          if (!existingIds.has(v.id)) {
-            ventes.push(v);
-            totalNew++;
-          } else {
-            totalDup++;
+      }
+
+      // Mode merge : on reconstruit l'index des clés de dédup AVANT chaque
+      // fichier pour que les imports successifs dédupliquent correctement.
+      const knownKeys = new Map(); // key -> vente existante
+      ventes.forEach(v => knownKeys.set(venteDedupeKey(v), v));
+
+      for (const v of data.ventes) {
+        if (!venteEstValide(v)) {
+          totalInvalid++;
+          continue;
+        }
+        const key = venteDedupeKey(v);
+        const existing = knownKeys.get(key);
+        if (!existing) {
+          // Nouvelle vente : on l'ajoute ET on met à jour l'index
+          // pour que la prochaine itération (même fichier ou suivant) dédup correctement.
+          ventes.push(v);
+          knownKeys.set(key, v);
+          totalNew++;
+        } else {
+          // Détection conflit : même clé mais contenu divergent → anomalie
+          if (existing.total !== v.total || (existing.items && v.items && existing.items.length !== v.items.length)) {
+            totalConflict++;
+            conflicts.push({ id: v.id || key, file: file.name });
           }
-        });
+          // Déterminer si c'est déjà en DB avant import ou doublon batch
+          // (approximation : si existing a été ajouté par ce batch, c'est un dup batch)
+          // On ne tracke pas finement : on considère tout comme "déjà présent"
+          // sauf si la clé vient d'être ajoutée dans ce batch.
+          totalAlready++;
+        }
       }
     } catch (err) {
       showToast(`Erreur sur ${file.name}`, 'error');
       console.error(err);
     }
   }
-  if (mode === 'merge') showToast(`✓ ${totalNew} ajoutées, ${totalDup} doublons`);
+
+  if (mode === 'merge') {
+    const parts = [`✓ ${totalNew} ajoutées`];
+    if (totalAlready) parts.push(`${totalAlready} déjà là`);
+    if (totalInvalid) parts.push(`${totalInvalid} invalides`);
+    if (totalConflict) parts.push(`⚠ ${totalConflict} conflits`);
+    showToast(parts.join(' · '));
+    if (totalConflict > 0) {
+      console.warn('Conflits de fusion (même ID, contenu différent) :', conflicts);
+    }
+    // Tri par timestamp décroissant après merge (cohérence historique)
+    ventes.sort((a, b) => {
+      const ta = a.timestamp || a.date || '';
+      const tb = b.timestamp || b.date || '';
+      return tb.localeCompare(ta);
+    });
+  }
   save();
   updateHeader();
   renderHisto();
@@ -980,16 +1084,28 @@ function renderSync() {
     `).join('');
 }
 
+// Autorise lettres (accents inclus), chiffres, espace, tiret, underscore.
+// Interdit le reste (caractères spéciaux de ponctuation, emoji, symboles).
+const DEVICE_LABEL_RE = /^[\p{L}\p{N} _-]+$/u;
+
 function renommerAppareil() {
   genModal({
     title: "Nom de l'appareil",
-    message: "Utilisé pour identifier les ventes de ce téléphone lors des fusions.",
+    message: "Lettres, chiffres, espaces, tirets et underscores (2 à 30 caractères).",
     input: true,
+    inputType: 'text',
     inputValue: deviceLabel,
+    maxLength: 30,
+    placeholder: 'Ex : Tel Stéf, iPhone Marché, Tablette-Caisse',
     okLabel: 'Enregistrer',
     onOk: () => {
       const v = document.getElementById('gen-input').value.trim();
-      if (!v) { showToast('Nom vide', 'error'); return; }
+      if (v.length < 2) { showToast('Nom trop court (2 caractères mini)', 'error'); return; }
+      if (v.length > 30) { showToast('Nom trop long (30 max)', 'error'); return; }
+      if (!DEVICE_LABEL_RE.test(v)) {
+        showToast('Caractères spéciaux interdits', 'error');
+        return;
+      }
       deviceLabel = v;
       localStorage.setItem('caisse_device_label', deviceLabel);
       document.getElementById('device-label').textContent = deviceLabel;
@@ -998,16 +1114,6 @@ function renommerAppareil() {
       showToast('Appareil renommé');
     }
   });
-}
-
-// Hack : le modal générique a un input type=number, mais pour renommer on veut du texte
-// On remplace l'input dynamiquement
-const origGenModal = genModal;
-function genModalText(opts) {
-  origGenModal(opts);
-  const inp = document.getElementById('gen-input');
-  inp.type = 'text';
-  setTimeout(() => { inp.type = 'number'; }, 5000); // remettre pour les suivants
 }
 
 // ============================
@@ -1031,6 +1137,8 @@ document.addEventListener('click', (e) => {
   else if (action === 'editprod') { ouvrirEditProduit(parseInt(target.dataset.id)); }
   else if (action === 'stockplus') { e.stopPropagation(); modifStock(parseInt(target.dataset.id), 1); }
   else if (action === 'stockminus') { e.stopPropagation(); modifStock(parseInt(target.dataset.id), -1); }
+  else if (action === 'panier-dec') { e.stopPropagation(); decrementerLignePanier(parseInt(target.dataset.idx)); }
+  else if (action === 'panier-del') { e.stopPropagation(); supprimerLignePanier(parseInt(target.dataset.idx)); }
 });
 
 // ============================
@@ -1076,6 +1184,7 @@ updateHeader();
 renderCaisse();
 renderPanier();
 
+// PWA-JS-START (retiré par scripts/build-portable.py)
 // ========== PWA : service worker + installabilité ==========
 
 // Détection du contexte d'affichage (standalone = app installée)
@@ -1189,6 +1298,7 @@ if (btnUpdate) {
     });
   });
 }
+// PWA-JS-END
 </script>
 </body>
 </html>

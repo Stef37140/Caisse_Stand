@@ -19,6 +19,22 @@ Ce fichier sert de **bridge** entre les sessions Claude Code sur différents pos
 
 *(Ajouter ici les apprentissages de la session en cours)*
 
+### Session 2026-04-13 (suite) — 3 correctifs UX/Sync (v3.0.1)
+
+- **[2026-04-13] Piège "Set avant boucle mutante"** : dans `handleImport`, le `Set existingIds` était calculé avant la boucle de fusion et jamais mis à jour. Conséquence : doubles imports possibles si une vente commune existait dans 2 fichiers du même batch. Leçon générique : **re-synchroniser l'index utilisé pour les tests d'appartenance après chaque mutation de la collection**, ou utiliser une `Map` et la mettre à jour en place.
+  - À intégrer dans : `docs/BUGS_RESOLUS.md` (Bug #6) — fait
+
+- **[2026-04-13] Dédup robuste multi-sources** : pour fusionner des données provenant de plusieurs appareils, ne pas se contenter d'un ID texte — toujours prévoir un fallback content-hash (clé synthétique stable même si l'ordre interne varie). Pattern : `key = id || synthetic(deviceId + timestamp + total + items.sort())`.
+
+- **[2026-04-13] Anti-pattern "patcher le DOM après ouverture"** : le hack `genModalText` patchait `input.type` après l'appel à `genModal`. Échouait silencieusement quand on appelait `genModal` directement sans passer par le wrapper. Leçon : passer la configuration explicitement en paramètre plutôt que de muter l'état après coup.
+  - À intégrer dans : `docs/BUGS_RESOLUS.md` (Bug #7) — fait
+
+- **[2026-04-13] Validation noms d'appareils unicode** : la regex `/^\w+$/` n'accepte pas les accents. Pour du français, utiliser `/^[\p{L}\p{N} _-]+$/u` avec le flag `u` (propriétés Unicode). Autorise "Stéphane", "Tel Stéf", "iPhone-Caisse".
+
+- **[2026-04-13] Event delegation et stopPropagation** : quand on ajoute des boutons dans une zone parent qui a aussi un handler de clic (ex : toggle panier), toujours prévoir `e.stopPropagation()` sur les actions enfants pour éviter que le clic ne bulle vers le parent. Même si la zone du bouton est techniquement hors du parent cliquable, le comportement est plus robuste.
+
+---
+
 ### Session 2026-04-13 — Cleanup repo + V3.0 PWA installable
 
 - **[2026-04-13] Repo hygiene** : le repo avait été uploadé avec une série de fichiers dont les **noms ne correspondaient pas aux contenus** (ex: `index.html` contenait le REX, `README.md` contenait le CHANGELOG, `ROADMAP.md` était un duplicata de `CLAUDE.md`, `PROMPT_CLAUDE_CODE.md` était le `.gitignore`). Nettoyé en plusieurs commits atomiques `chore:` et `docs:`.

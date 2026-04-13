@@ -42,6 +42,10 @@ PWA_JS_RE = re.compile(
 TAILWIND_TAG_RE = re.compile(
     r'<script src="https://cdn\.tailwindcss\.com"></script>'
 )
+# Repère un <script src="./vendor/xxx"></script> pour pouvoir l'inliner
+VENDOR_SCRIPT_RE = re.compile(
+    r'<script src="\./vendor/([^"]+)"></script>'
+)
 MANIFEST_AND_ICONS_RE = re.compile(
     r'<link rel="manifest"[^>]*>\n|'
     r'<link rel="icon"[^>]*>\n|'
@@ -121,6 +125,24 @@ def build(input_path: Path, output_path: Path, tailwind_file: Path | None) -> No
             "dans index.html. Impossible d'inliner Tailwind."
         )
     print(f"  ✓ Tailwind inliné ({len(tailwind) // 1024} Ko)")
+
+    print("→ Inlining des vendors (qrcode, jsQR, pako)")
+    vendor_dir = REPO_ROOT / "vendor"
+    def _inline_vendor(match):
+        name = match.group(1)
+        path = vendor_dir / name
+        if not path.exists():
+            print(f"  ⚠ {name} introuvable dans vendor/, balise laissée telle quelle")
+            return match.group(0)
+        content = path.read_text(encoding="utf-8", errors="replace")
+        size_kb = len(content) // 1024
+        print(f"  ✓ {name} inliné ({size_kb} Ko)")
+        return (
+            f"<script>/* {name} inliné — généré par scripts/build-portable.py */\n"
+            + content.replace("</script>", "<\\/script>")
+            + "\n</script>"
+        )
+    html = VENDOR_SCRIPT_RE.sub(_inline_vendor, html)
 
     # Petit bandeau visible pour rappeler la nature du fichier
     banner = (

@@ -10,8 +10,11 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>Caisse Stand v3.0</title>
+<title>Caisse Stand v3.1</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="./vendor/qrcode.min.js"></script>
+<script src="./vendor/jsQR.min.js"></script>
+<script src="./vendor/pako.min.js"></script>
 <style>
   body { -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
   .btn-product { transition: transform 0.05s; }
@@ -146,6 +149,19 @@
       <h3 class="font-bold text-sm text-slate-700 mb-2">📱 Ventilation par appareil</h3>
       <div id="device-breakdown" class="space-y-1 text-xs"></div>
     </div>
+
+    <!-- ============================ -->
+    <!-- SYNC RAPIDE QR CODE (P2P)    -->
+    <!-- ============================ -->
+    <div class="bg-cyan-50 border border-cyan-200 p-3 rounded-lg mb-3">
+      <h3 class="font-bold text-sm text-cyan-900 mb-1">📷 Sync rapide entre téléphones (offline)</h3>
+      <p class="text-xs text-cyan-800 mb-2">Échange direct stock + ventes via QR code, sans réseau. Idéal sur le stand.</p>
+      <div class="flex gap-2">
+        <button id="btn-qr-show" class="flex-1 bg-cyan-600 text-white py-2 rounded-lg text-sm font-semibold">📤 Afficher mon QR</button>
+        <button id="btn-qr-scan" class="flex-1 bg-cyan-700 text-white py-2 rounded-lg text-sm font-semibold">📥 Scanner un QR</button>
+      </div>
+      <div id="qr-last-sync" class="mt-2 text-xs text-cyan-700"></div>
+    </div>
     <!-- PWA-CARDS-START : retiré par scripts/build-portable.py -->
     <div id="install-card" class="hidden bg-emerald-50 border border-emerald-200 p-3 rounded-lg mb-3">
       <h3 class="font-bold text-sm text-emerald-900 mb-1">📲 Installer l'app</h3>
@@ -233,6 +249,36 @@
       <button id="gen-cancel" class="flex-1 bg-slate-300 text-slate-700 py-3 rounded-lg font-semibold">Annuler</button>
       <button id="gen-ok" class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold">OK</button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL QR : afficher mon QR pour qu'un autre téléphone le scanne -->
+<div id="modal-qr-show" class="hidden fixed inset-0 modal-bg z-50 flex items-end sm:items-center justify-center">
+  <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:w-96 p-4 max-h-[95vh] overflow-y-auto">
+    <h3 class="text-lg font-bold mb-1">📤 QR à scanner</h3>
+    <p class="text-xs text-slate-600 mb-3">L'autre téléphone : Sync → "Scanner un QR" puis pointer la caméra sur celui-ci.</p>
+    <div id="qr-canvas" class="bg-white border-2 border-slate-200 rounded-lg p-2 mx-auto" style="width:280px; height:280px;"></div>
+    <div id="qr-segment-info" class="hidden mt-2 text-center text-sm text-slate-700"></div>
+    <div id="qr-segment-nav" class="hidden mt-2 flex gap-2">
+      <button id="btn-qr-prev" class="flex-1 bg-slate-200 py-2 rounded-lg text-sm font-semibold">◀ Précédent</button>
+      <button id="btn-qr-next" class="flex-1 bg-slate-200 py-2 rounded-lg text-sm font-semibold">Suivant ▶</button>
+    </div>
+    <div id="qr-payload-info" class="mt-2 text-xs text-slate-500 text-center"></div>
+    <button id="btn-qr-show-close" class="mt-3 w-full bg-slate-300 py-3 rounded-lg font-semibold">Fermer</button>
+  </div>
+</div>
+
+<!-- MODAL QR : scanner avec la caméra -->
+<div id="modal-qr-scan" class="hidden fixed inset-0 modal-bg z-50 flex items-end sm:items-center justify-center">
+  <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:w-96 p-4 max-h-[95vh] overflow-y-auto">
+    <h3 class="text-lg font-bold mb-1">📥 Scanner un QR</h3>
+    <p id="qr-scan-status" class="text-xs text-slate-600 mb-2">Pointe la caméra sur le QR de l'autre téléphone…</p>
+    <div class="relative bg-black rounded-lg overflow-hidden" style="aspect-ratio:1;">
+      <video id="qr-video" autoplay muted playsinline class="absolute inset-0 w-full h-full object-cover"></video>
+      <div class="absolute inset-8 border-4 border-cyan-400 rounded-lg pointer-events-none"></div>
+    </div>
+    <div id="qr-scan-progress" class="mt-2 text-center text-sm text-slate-700"></div>
+    <button id="btn-qr-scan-cancel" class="mt-3 w-full bg-slate-300 py-3 rounded-lg font-semibold">Annuler</button>
   </div>
 </div>
 
@@ -1246,6 +1292,7 @@ function renderSync() {
         <div class="text-slate-600">${d.count} ventes · 💵 ${d.cash} € · 💳 ${d.cb} € · <strong>Total ${d.cash + d.cb} €</strong></div>
       </div>
     `).join('');
+  renderQRLastSync();
 }
 
 // Autorise lettres (accents inclus), chiffres, espace, tiret, underscore.
@@ -1278,6 +1325,259 @@ function renommerAppareil() {
       showToast('Appareil renommé');
     }
   });
+}
+
+// ============================
+// SYNC RAPIDE QR (peer-to-peer offline)
+// ============================
+// Format des segments QR : "CS1|<id6>|<idx>/<total>|<chunk_b64>"
+// - CS1 = magic + version protocole
+// - id6 = identifiant aléatoire 6 chars partagé par tous les segments d'un même payload
+// - idx/total = numérotation 1-based
+// - chunk_b64 = morceau base64 d'un payload deflaté
+
+const QR_MAGIC = 'CS1';
+const QR_CHUNK_BYTES = 1800; // bytes raw par chunk → ~2400 chars b64, OK pour QR v40 byte mode
+
+let qrShowState = null; // { segments: [string], current: 0, qrInstance, payloadInfo }
+let qrScanState = null; // { stream, rafId, video, canvas, ctx, detector, currentBatchId, segments: Map<idx,chunk>, total }
+
+function compressPayloadToB64(obj) {
+  // JSON → utf8 → deflate → base64
+  const json = JSON.stringify(obj);
+  const u8 = pako.deflate(json);
+  // Conversion Uint8Array → base64 (chunked pour éviter call stack)
+  let bin = '';
+  for (let i = 0; i < u8.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
+function decompressPayloadFromB64(b64) {
+  const bin = atob(b64);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  const json = pako.inflate(u8, { to: 'string' });
+  return JSON.parse(json);
+}
+
+function chunkString(str, size) {
+  const out = [];
+  for (let i = 0; i < str.length; i += size) out.push(str.slice(i, i + size));
+  return out;
+}
+
+function ouvrirQRShow() {
+  // Construit le delta payload depuis la dernière sync (avec n'importe quel peer)
+  // Pour simplifier : on envoie tout ce qui a été modifié depuis la PLUS ANCIENNE
+  // dernière sync. Si jamais sync, on envoie tout (cutoff = '').
+  const allStates = syncStateAll();
+  const stamps = Object.values(allStates);
+  const cutoff = stamps.length === 0 ? '' : stamps.sort()[0]; // le plus ancien
+  const payload = buildSyncPayload(cutoff);
+
+  let b64;
+  try { b64 = compressPayloadToB64(payload); }
+  catch (e) { showToast('Erreur compression : ' + e.message, 'error'); return; }
+
+  // Découpage en segments
+  const batchId = Math.random().toString(36).slice(2, 8);
+  const chunks = chunkString(b64, Math.floor(QR_CHUNK_BYTES * 4 / 3));
+  const segments = chunks.map((c, i) => `${QR_MAGIC}|${batchId}|${i+1}/${chunks.length}|${c}`);
+
+  qrShowState = {
+    segments,
+    current: 0,
+    qrInstance: null,
+    payloadInfo: `${payload.produits.length} produits · ${payload.ventes.length} ventes`
+  };
+
+  document.getElementById('modal-qr-show').classList.remove('hidden');
+  renderQRSegment();
+
+  document.getElementById('qr-payload-info').textContent =
+    `Delta depuis ${cutoff || 'le début'} : ${qrShowState.payloadInfo}`;
+
+  if (segments.length > 1) {
+    document.getElementById('qr-segment-info').classList.remove('hidden');
+    document.getElementById('qr-segment-nav').classList.remove('hidden');
+  } else {
+    document.getElementById('qr-segment-info').classList.add('hidden');
+    document.getElementById('qr-segment-nav').classList.add('hidden');
+  }
+}
+
+function renderQRSegment() {
+  if (!qrShowState) return;
+  const el = document.getElementById('qr-canvas');
+  el.innerHTML = '';
+  qrShowState.qrInstance = new QRCode(el, {
+    text: qrShowState.segments[qrShowState.current],
+    width: 280,
+    height: 280,
+    correctLevel: QRCode.CorrectLevel.L
+  });
+  document.getElementById('qr-segment-info').textContent =
+    `Segment ${qrShowState.current + 1} / ${qrShowState.segments.length}`;
+}
+
+function fermerQRShow() {
+  document.getElementById('modal-qr-show').classList.add('hidden');
+  qrShowState = null;
+}
+
+async function ouvrirQRScan() {
+  qrScanState = {
+    stream: null, rafId: null, video: null, canvas: null, ctx: null,
+    detector: null, currentBatchId: null, segments: new Map(), total: 0
+  };
+  document.getElementById('modal-qr-scan').classList.remove('hidden');
+  document.getElementById('qr-scan-status').textContent = 'Pointe la caméra sur le QR de l\'autre téléphone…';
+  document.getElementById('qr-scan-progress').textContent = '';
+
+  try {
+    qrScanState.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }
+    });
+  } catch (e) {
+    showToast('Caméra inaccessible : ' + e.message, 'error');
+    fermerQRScan();
+    return;
+  }
+
+  qrScanState.video = document.getElementById('qr-video');
+  qrScanState.video.srcObject = qrScanState.stream;
+  qrScanState.canvas = document.createElement('canvas');
+  qrScanState.ctx = qrScanState.canvas.getContext('2d', { willReadFrequently: true });
+
+  // Préfère BarcodeDetector natif si dispo (iOS 17+, Chrome récent)
+  if (window.BarcodeDetector) {
+    try { qrScanState.detector = new BarcodeDetector({ formats: ['qr_code'] }); }
+    catch(e) { qrScanState.detector = null; }
+  }
+
+  qrScanState.video.onloadedmetadata = () => {
+    qrScanLoop();
+  };
+}
+
+async function qrScanLoop() {
+  if (!qrScanState || !qrScanState.video) return;
+  const v = qrScanState.video;
+  if (v.readyState >= 2 && v.videoWidth > 0) {
+    qrScanState.canvas.width = v.videoWidth;
+    qrScanState.canvas.height = v.videoHeight;
+    qrScanState.ctx.drawImage(v, 0, 0);
+
+    let detected = null;
+    if (qrScanState.detector) {
+      try {
+        const results = await qrScanState.detector.detect(qrScanState.canvas);
+        if (results && results.length) detected = results[0].rawValue;
+      } catch(e) {}
+    }
+    if (!detected && typeof jsQR !== 'undefined') {
+      const img = qrScanState.ctx.getImageData(0, 0, qrScanState.canvas.width, qrScanState.canvas.height);
+      const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+      if (code) detected = code.data;
+    }
+
+    if (detected) {
+      handleQRDetected(detected);
+    }
+  }
+  qrScanState.rafId = requestAnimationFrame(qrScanLoop);
+}
+
+function handleQRDetected(text) {
+  // Format attendu : CS1|batchId|idx/total|chunk
+  const parts = text.split('|');
+  if (parts.length !== 4 || parts[0] !== QR_MAGIC) {
+    document.getElementById('qr-scan-status').textContent =
+      '⚠ QR non reconnu (format incompatible)';
+    return;
+  }
+  const [, batchId, idxTotal, chunk] = parts;
+  const [idxStr, totalStr] = idxTotal.split('/');
+  const idx = parseInt(idxStr), total = parseInt(totalStr);
+  if (!batchId || !idx || !total) return;
+
+  // Nouveau batch ?
+  if (qrScanState.currentBatchId !== batchId) {
+    qrScanState.currentBatchId = batchId;
+    qrScanState.segments = new Map();
+    qrScanState.total = total;
+  }
+
+  if (qrScanState.segments.has(idx)) {
+    document.getElementById('qr-scan-progress').textContent =
+      `Segment ${idx} déjà reçu (${qrScanState.segments.size}/${total})`;
+    return;
+  }
+  qrScanState.segments.set(idx, chunk);
+  document.getElementById('qr-scan-progress').textContent =
+    `Reçu ${qrScanState.segments.size}/${total}`;
+
+  if (qrScanState.segments.size === total) {
+    // Assemblage + décompression + apply
+    let assembled = '';
+    for (let i = 1; i <= total; i++) {
+      assembled += qrScanState.segments.get(i);
+    }
+    let payload;
+    try { payload = decompressPayloadFromB64(assembled); }
+    catch (e) {
+      showToast('QR corrompu : ' + e.message, 'error');
+      fermerQRScan();
+      return;
+    }
+    appliquerPayloadRecu(payload);
+    fermerQRScan();
+  }
+}
+
+function appliquerPayloadRecu(payload) {
+  const r = applySyncPayload(payload);
+  save();
+  renderCaisse();
+  renderStock();
+  renderHisto();
+  renderSync();
+  updateHeader();
+  const parts = [];
+  if (r.produitsAjoutes) parts.push(`${r.produitsAjoutes} prod. ajoutés`);
+  if (r.produitsMaj) parts.push(`${r.produitsMaj} prod. MAJ`);
+  if (r.produitsSupprimes) parts.push(`${r.produitsSupprimes} prod. supprimés`);
+  if (r.ventesAjoutees) parts.push(`${r.ventesAjoutees} ventes`);
+  if (r.ventesIgnorees) parts.push(`${r.ventesIgnorees} doublons`);
+  if (r.invalides) parts.push(`⚠ ${r.invalides} invalides`);
+  showToast('✓ Sync ' + (payload.fromLabel || payload.from || '?') + ' : ' + (parts.join(' · ') || 'rien à faire'));
+}
+
+function fermerQRScan() {
+  if (qrScanState) {
+    if (qrScanState.rafId) cancelAnimationFrame(qrScanState.rafId);
+    if (qrScanState.stream) qrScanState.stream.getTracks().forEach(t => t.stop());
+  }
+  document.getElementById('modal-qr-scan').classList.add('hidden');
+  qrScanState = null;
+}
+
+function renderQRLastSync() {
+  const all = syncStateAll();
+  const entries = Object.entries(all);
+  const el = document.getElementById('qr-last-sync');
+  if (!el) return;
+  if (entries.length === 0) {
+    el.textContent = 'Jamais synchronisé avec un autre appareil.';
+  } else {
+    const lines = entries.map(([id, ts]) => {
+      const d = new Date(ts);
+      return `· ${id.slice(0,12)} : ${d.toLocaleString('fr-FR')}`;
+    });
+    el.innerHTML = 'Dernières syncs :<br>' + lines.join('<br>');
+  }
 }
 
 // ============================
@@ -1331,6 +1631,20 @@ document.getElementById('btn-export-json').addEventListener('click', () => expor
 document.getElementById('btn-import-json').addEventListener('click', demarrerImportFusion);
 document.getElementById('btn-restore-json').addEventListener('click', demarrerImportRestore);
 document.getElementById('btn-rename-device').addEventListener('click', renommerAppareil);
+
+// QR sync
+document.getElementById('btn-qr-show').addEventListener('click', ouvrirQRShow);
+document.getElementById('btn-qr-show-close').addEventListener('click', fermerQRShow);
+document.getElementById('btn-qr-scan').addEventListener('click', ouvrirQRScan);
+document.getElementById('btn-qr-scan-cancel').addEventListener('click', fermerQRScan);
+document.getElementById('btn-qr-prev').addEventListener('click', () => {
+  if (qrShowState && qrShowState.current > 0) { qrShowState.current--; renderQRSegment(); }
+});
+document.getElementById('btn-qr-next').addEventListener('click', () => {
+  if (qrShowState && qrShowState.current < qrShowState.segments.length - 1) {
+    qrShowState.current++; renderQRSegment();
+  }
+});
 
 // Modal produit
 document.getElementById('modal-annuler').addEventListener('click', fermerModal);

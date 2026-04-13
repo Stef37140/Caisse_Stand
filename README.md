@@ -98,8 +98,11 @@ Voir `docs/CHECKLIST_TESTS.md` — 25 scénarios de tests manuels à passer avan
 
 Projet personnel, usage libre. Pas de support commercial.
 
-## 👤 Auteur
+## 👤 Auteurs
 
-Stéphane Lesigne — maker, technicien métrologue, adepte du self-hosting.
+Projet personnel, développé en pair-programming avec Claude (Anthropic) :
 
-Développé en pair-programming avec Claude (Anthropic) — itérations V0 → V2.1 sur Claude.ai mobile, puis reprise Claude Code pour la V3+.
+- **V0 → V2.1** : itérations sur Claude.ai mobile
+- **V3.0+** : reprise avec Claude Code, ajout PWA installable + variante portable + correctifs UX/sync
+
+Les contributions extérieures sont les bienvenues via issues et pull requests.

@@ -6,7 +6,7 @@
 
 PWA (Progressive Web App) de **caisse enregistreuse locale et auto-hébergée** pour gérer les ventes sur un **stand de marché** (vêtements : T-Shirts, Pulls, Sweats avec différents modèles/dessins et tailles).
 
-**Contexte métier** : Stéphane aide un ami sur un stand de marché et veut un outil de **transparence totale** pour suivre stock + caisse + ventes sans avoir recours à une solution commerciale type SumUp/Loyverse (Loyverse n'est pas disponible sur l'App Store FR à cause de l'absence de certification NF525).
+**Contexte métier** : l'auteur aide un ami sur un stand de marché et veut un outil de **transparence totale** pour suivre stock + caisse + ventes sans avoir recours à une solution commerciale type SumUp/Loyverse (Loyverse n'est pas disponible sur l'App Store FR à cause de l'absence de certification NF525).
 
 L'app n'a **pas vocation à être un logiciel de caisse officiel NF525** — c'est un outil interne de suivi entre le vendeur et le propriétaire du stand, sans aucune obligation fiscale à respecter.
 
@@ -21,7 +21,7 @@ Ces contraintes ont été validées au cours de l'itération V0 → V2.1 et ne d
 5. **Utilisable en mode offline complet** — sur un marché le réseau est aléatoire.
 6. **Rapidité d'encaissement prioritaire** — chaque vente doit se faire en 2-3 taps maximum, rush du marché oblige.
 7. **Transparence multi-appareils** — possibilité de faire tourner l'app sur 2-3 téléphones en parallèle et de consolider les ventes en fin de journée via fusion de fichiers JSON.
-8. **Philosophie open source / self-hosted** — cohérent avec l'écosystème de Stéphane (Synology DS920+, Docker stack, Home Assistant, Claude Code, Ollama, etc.).
+8. **Philosophie open source / self-hosted** — l'app est pensée pour du self-hosting (ex. NAS Synology, container Docker, hébergement statique type GitHub Pages / Cloudflare Pages).
 
 ## 🏗️ Stack technique
 
@@ -58,7 +58,7 @@ Caisse_Stand/
 
 ## 📖 Historique du développement (V0 → V2.1)
 
-Le projet a été itéré dans une conversation Claude.ai mobile avec Stéphane. Voici le récap des étapes :
+Le projet a été itéré dans une conversation Claude.ai mobile. Voici le récap des étapes :
 
 ### V0 — Premier jet
 - Grille produits en 2 colonnes avec 9 produits hardcodés (T-Shirt/Pull/Sweat × M/L/XL)
@@ -143,7 +143,7 @@ Les prochaines étapes, par ordre de priorité. **À discuter avec l'utilisateur
 ### V3.1 — Hébergement Synology / GitHub Pages
 - Documenter la procédure de déploiement sur Synology via Web Station ou container Docker (nginx)
 - Alternative : GitHub Pages pour accès externe en HTTPS (nécessaire pour certaines API PWA)
-- Tester depuis le réseau local Stéphane
+- Tester depuis le réseau local
 
 ### V3.2 — Images produits
 - Remplacer les emojis modèles par vraies images
@@ -202,15 +202,17 @@ Voir `docs/CHECKLIST_TESTS.md` pour la liste complète. Les critiques à tester 
 9. Import + fusion JSON → déduplication fonctionne, compteur ventes correct
 10. Renommage appareil → persistant après rechargement
 
-## 👤 Contexte utilisateur
+## 👤 Contexte contributeur
 
-Stéphane Lesigne (pseudo "Stéf") — Technicien Métrologue WIKA / CNPE Chinon. Maker actif : woodworking, 3D printing, laser engraving. Stack perso : Synology DS920+, Docker, Home Assistant, Ollama, Claude Code. Forte préférence pour open source et self-hosting.
+Profil type du contributeur principal :
 
-**Communication préférée** : réponses détaillées techniques, numérotées quand pertinent, code blocks, tables, templates prêts à l'emploi, Markdown structuré, diagrammes Mermaid quand utile. Tone pragmatique et précis. Proactivité sur les optimisations et analyses critiques.
+- À l'aise avec : HTML/CSS/JS vanilla, Markdown, YAML, JSON, Bash, Docker Compose, Git
+- Préférence claire pour l'**open source** et le **self-hosting** (NAS, containers)
+- Environnement de travail multi-postes → utilise le pattern REX cross-workstation
 
-**Proficiences** : VBA, YAML, JSON, Markdown, Bash, HTML/CSS, Notepad++, Excel, Docker Compose, Grafana. Connait le pattern Claude Code (vient du repo `Trames_METCal`).
+**Communication préférée** : réponses techniques détaillées, listes numérotées quand pertinent, code blocks, tableaux, templates prêts à l'emploi, Markdown structuré, diagrammes Mermaid quand utile. Tone pragmatique et précis. Proactivité sur les optimisations et analyses critiques.
 
-**Pattern REX cross-workstation** : Stéphane utilise un fichier `REX/PENDING_LEARNINGS.md` pour synchroniser les apprentissages entre ses sessions Claude Code sur différents postes. Ce repo devrait adopter le même pattern.
+**Pattern REX cross-workstation** : le fichier `REX/PENDING_LEARNINGS.md` sert de bridge entre sessions Claude Code sur différents postes de travail (poste perso, laptop, etc.) — les apprentissages transitent par ce fichier avant d'être consolidés dans les docs permanentes.
 
 ## 📝 Conventions de commit
 

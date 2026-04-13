@@ -269,13 +269,48 @@ const ICONS_MODELE = {
 };
 
 // ============================
-// STOCK DISPO (décrément en direct panier)
+// STOCK DISPO (modèle event-sourced pour cohérence multi-appareils)
 // ============================
+// stock affiché = baseline (p.stock saisi à p.stockSetAt)
+//               − ventes du produit après stockSetAt (toutes sources confondues)
+//               − quantité dans le panier en cours
+//
+// Conséquence : quand on importe les ventes d'un autre téléphone, le stock se
+// recalcule automatiquement, sans muter p.stock. La baseline n'est jamais
+// touchée par les ventes — elle ne change qu'à un comptage manuel (édition
+// produit, boutons +/− stock, ou création).
+
+// Compte les unités vendues d'un produit depuis un timestamp donné.
+function ventesDuProduitDepuis(produitId, sinceIso) {
+  let n = 0;
+  for (const v of ventes) {
+    const ts = v.timestamp || '';
+    if (ts <= sinceIso) continue;
+    if (!Array.isArray(v.items)) continue;
+    for (const it of v.items) {
+      if (it.id === produitId) n += it.qte;
+    }
+  }
+  return n;
+}
+
 function stockDispo(produitId) {
   const p = produits.find(x => x.id === produitId);
-  if (!p) return 0;
+  if (!p || p.deletedAt) return 0;
   const dansPanier = panier.filter(i => i.id === produitId).reduce((s,i) => s + i.qte, 0);
-  return p.stock - dansPanier;
+  return stockEffectif(p) - dansPanier;
+}
+
+// Stock réel restant (baseline − ventes depuis baseline), sans déduction panier.
+// Utilisé dans l'onglet Stock pour montrer l'inventaire absolu, peu importe le panier.
+function stockEffectif(p) {
+  if (!p || p.deletedAt) return 0;
+  return p.stock - ventesDuProduitDepuis(p.id, p.stockSetAt || '');
+}
+
+// Helper : retourne tous les produits non supprimés (filtre tombstones)
+function produitsActifs() {
+  return produits.filter(p => !p.deletedAt);
 }
 
 // ============================
@@ -297,6 +332,8 @@ function initDevice() {
 // ============================
 // PERSISTANCE
 // ============================
+function nowIso() { return new Date().toISOString(); }
+
 function save() {
   try {
     localStorage.setItem('caisse_data', JSON.stringify({
@@ -316,21 +353,124 @@ function load() {
       ventes = d.ventes || [];
       fondCaisse = d.fondCaisse || 0;
       lastBackup = d.lastBackup || null;
+      migrateProduits();
     } catch(e) { initDemo(); }
   } else {
     initDemo();
   }
 }
 
+// Migration douce : ajoute les champs sync (lastModified, stockSetAt) aux produits
+// qui n'en ont pas (legacy V<3.1). On les fixe à "maintenant" : le stock courant
+// est considéré comme la nouvelle baseline, les ventes futures décompteront depuis.
+function migrateProduits() {
+  const now = nowIso();
+  let changed = false;
+  for (const p of produits) {
+    if (!p.lastModified) { p.lastModified = now; changed = true; }
+    if (!p.stockSetAt)   { p.stockSetAt = now;   changed = true; }
+  }
+  if (changed) save();
+}
+
+// ============================
+// SYNC STATE (par peer) — qui a-t-on synchronisé jusqu'à quand
+// ============================
+function syncStateAll() {
+  try { return JSON.parse(localStorage.getItem('caisse_sync_state') || '{}'); }
+  catch(e) { return {}; }
+}
+function syncStateGet(peerId) {
+  return syncStateAll()[peerId] || null;
+}
+function syncStateSet(peerId, isoTs) {
+  const all = syncStateAll();
+  all[peerId] = isoTs;
+  try { localStorage.setItem('caisse_sync_state', JSON.stringify(all)); }
+  catch(e) {}
+}
+
+// Construit un payload de sync (delta depuis sinceTs, ou complet si null).
+// Format pivot indépendant du transport (QR, Cloud, JSON…).
+function buildSyncPayload(sinceTs) {
+  const cutoff = sinceTs || '';
+  return {
+    v: 1,                             // version du format
+    from: deviceId,
+    fromLabel: deviceLabel,
+    at: nowIso(),
+    since: cutoff,
+    produits: produits.filter(p => (p.lastModified || '') > cutoff),
+    ventes: ventes.filter(v => (v.timestamp || '') > cutoff),
+  };
+}
+
+// Applique un payload reçu. Stratégie :
+//   - produits : last-write-wins par lastModified (et propage deletedAt)
+//   - ventes : additif avec dédup (réutilise venteDedupeKey)
+// Retourne un rapport { produitsAjoutes, produitsMaj, produitsSupprimes,
+//                       ventesAjoutees, ventesIgnorees, invalides }
+function applySyncPayload(payload) {
+  const report = { produitsAjoutes: 0, produitsMaj: 0, produitsSupprimes: 0,
+                   ventesAjoutees: 0, ventesIgnorees: 0, invalides: 0 };
+  if (!payload || payload.v !== 1) return report;
+
+  // Merge produits (last-write-wins par lastModified)
+  if (Array.isArray(payload.produits)) {
+    for (const remote of payload.produits) {
+      if (!remote || typeof remote.id !== 'number' || !remote.lastModified) {
+        report.invalides++; continue;
+      }
+      const local = produits.find(p => p.id === remote.id);
+      if (!local) {
+        produits.push({ ...remote });
+        if (remote.deletedAt) report.produitsSupprimes++;
+        else report.produitsAjoutes++;
+      } else if ((remote.lastModified || '') > (local.lastModified || '')) {
+        const wasDeletedLocal = !!local.deletedAt;
+        Object.assign(local, remote);
+        if (remote.deletedAt && !wasDeletedLocal) report.produitsSupprimes++;
+        else report.produitsMaj++;
+      }
+    }
+  }
+
+  // Merge ventes (additif + dédup)
+  if (Array.isArray(payload.ventes)) {
+    const knownKeys = new Map();
+    ventes.forEach(v => knownKeys.set(venteDedupeKey(v), v));
+    for (const v of payload.ventes) {
+      if (!venteEstValide(v)) { report.invalides++; continue; }
+      const k = venteDedupeKey(v);
+      if (!knownKeys.has(k)) {
+        ventes.push(v);
+        knownKeys.set(k, v);
+        report.ventesAjoutees++;
+      } else {
+        report.ventesIgnorees++;
+      }
+    }
+    // Tri chronologique post-merge
+    ventes.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  }
+
+  if (payload.from) syncStateSet(payload.from, payload.at || nowIso());
+  return report;
+}
+
 function initDemo() {
   produits = [];
   let id = 1;
+  const now = nowIso();
   const demoModeles = ["Loup", "Tiki", "Lion"];
   ["T-Shirt", "Pull", "Sweat"].forEach(cat => {
     const prix = cat === "T-Shirt" ? 20 : cat === "Pull" ? 35 : 45;
     demoModeles.forEach(modele => {
       ["M", "L", "XL"].forEach(taille => {
-        produits.push({ id: id++, categorie: cat, modele, taille, prix, stock: 5 });
+        produits.push({
+          id: id++, categorie: cat, modele, taille, prix, stock: 5,
+          lastModified: now, stockSetAt: now
+        });
       });
     });
   });
@@ -449,12 +589,13 @@ function renderCaisse() {
   const bc1 = document.getElementById('bc-arrow1');
   const bcStep1 = document.getElementById('bc-step1');
 
+  const actifs = produitsActifs();
   if (currentLevel === 0) {
     bc1.classList.add('hidden');
     bcStep1.classList.add('hidden');
-    const cats = [...new Set(produits.map(p => p.categorie))];
+    const cats = [...new Set(actifs.map(p => p.categorie))];
     grid.innerHTML = cats.map(cat => {
-      const total = produits.filter(p => p.categorie === cat).reduce((s,p) => s + stockDispo(p.id), 0);
+      const total = actifs.filter(p => p.categorie === cat).reduce((s,p) => s + stockDispo(p.id), 0);
       return `
         <button data-action="selcat" data-cat="${cat}" class="btn-product ${COULEURS_CAT[cat] || 'bg-slate-600'} text-white p-4 rounded-lg shadow col-span-3 flex justify-between items-center">
           <span class="text-lg font-bold">${cat}</span>
@@ -466,9 +607,9 @@ function renderCaisse() {
     bc1.classList.add('hidden');
     bcStep1.classList.remove('hidden');
     bcStep1.textContent = selCat;
-    const modeles = [...new Set(produits.filter(p => p.categorie === selCat).map(p => p.modele))];
+    const modeles = [...new Set(actifs.filter(p => p.categorie === selCat).map(p => p.modele))];
     grid.innerHTML = modeles.map(m => {
-      const total = produits.filter(p => p.categorie === selCat && p.modele === m).reduce((s,p) => s + stockDispo(p.id), 0);
+      const total = actifs.filter(p => p.categorie === selCat && p.modele === m).reduce((s,p) => s + stockDispo(p.id), 0);
       const dispo = total > 0 ? '' : 'opacity-40';
       return `
         <button data-action="selmodele" data-modele="${encodeURIComponent(m)}" class="btn-product ${COULEURS_CAT[selCat]} text-white p-2 rounded-lg shadow ${dispo}">
@@ -481,7 +622,7 @@ function renderCaisse() {
   } else if (currentLevel === 2) {
     bc1.classList.remove('hidden');
     bcStep1.innerHTML = `<button data-action="backcat" class="text-blue-700 underline">${selCat}</button> › ${selModele}`;
-    const tailles = produits.filter(p => p.categorie === selCat && p.modele === selModele);
+    const tailles = actifs.filter(p => p.categorie === selCat && p.modele === selModele);
     grid.innerHTML = tailles.map(p => {
       const dispo = stockDispo(p.id);
       const cls = dispo > 0 ? '' : 'opacity-40 pointer-events-none';
@@ -517,7 +658,7 @@ function togglePanier() {
 
 function ajouterAuPanier(id) {
   const p = produits.find(x => x.id === id);
-  if (!p) return;
+  if (!p || p.deletedAt) return;
   if (stockDispo(id) <= 0) {
     showToast('Stock épuisé', 'error');
     return;
@@ -580,10 +721,10 @@ function viderPanier() {
 }
 
 function finaliserVente(mode, total) {
-  panier.forEach(i => {
-    const p = produits.find(x => x.id === i.id);
-    if (p) p.stock -= i.qte;
-  });
+  // Note (V3.1+) : on ne décrémente PLUS p.stock ici. Le stock affiché est
+  // calculé dynamiquement par stockDispo() à partir de la baseline + ventes.
+  // Ça permet la cohérence multi-appareils : une vente importée d'un autre
+  // téléphone décrémente automatiquement le stock affiché chez tous.
   const now = new Date();
   ventes.push({
     id: `${deviceId}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
@@ -640,10 +781,8 @@ function annulerDerniere() {
     message: `Annuler la vente de ${v.total} € (${v.heure}) ?`,
     okLabel: 'Oui, annuler',
     onOk: () => {
-      v.items.forEach(i => {
-        const p = produits.find(x => x.id === i.id);
-        if (p) p.stock += i.qte;
-      });
+      // V3.1+ : on ne ré-incrémente plus p.stock manuellement. Retirer la
+      // vente du tableau suffit : stockDispo() la déduira d'office.
       ventes = ventes.filter(x => x.id !== v.id);
       save();
       renderCaisse();
@@ -665,11 +804,12 @@ function updateHeader() {
 // STOCK
 // ============================
 function renderStock() {
-  const cats = [...new Set(produits.map(p => p.categorie))];
+  const actifs = produitsActifs();
+  const cats = [...new Set(actifs.map(p => p.categorie))];
   let html = '';
   cats.forEach(cat => {
     html += `<h3 class="font-bold text-sm text-slate-700 mt-3 mb-1">${cat}</h3>`;
-    const items = produits.filter(p => p.categorie === cat);
+    const items = actifs.filter(p => p.categorie === cat);
     html += items.map(p => `
       <div data-action="editprod" data-id="${p.id}" class="flex items-center gap-2 bg-slate-50 p-2 rounded-lg active:bg-slate-200 cursor-pointer">
         <div class="${COULEURS_CAT[cat] || 'bg-slate-600'} w-2 h-10 rounded"></div>
@@ -679,7 +819,7 @@ function renderStock() {
           <div class="text-xs text-slate-500">${p.prix} €</div>
         </div>
         <button data-action="stockminus" data-id="${p.id}" class="bg-slate-200 w-8 h-8 rounded font-bold">−</button>
-        <span class="w-8 text-center font-bold ${p.stock === 0 ? 'text-red-600' : ''}">${p.stock}</span>
+        <span class="w-8 text-center font-bold ${stockEffectif(p) === 0 ? 'text-red-600' : ''}">${stockEffectif(p)}</span>
         <button data-action="stockplus" data-id="${p.id}" class="bg-slate-200 w-8 h-8 rounded font-bold">+</button>
       </div>
     `).join('');
@@ -689,8 +829,15 @@ function renderStock() {
 
 function modifStock(id, delta) {
   const p = produits.find(x => x.id === id);
-  if (!p) return;
-  p.stock = Math.max(0, p.stock + delta);
+  if (!p || p.deletedAt) return;
+  // Récompute le stock courant (baseline − ventes depuis baseline) puis
+  // applique le delta. Ça reset la baseline à maintenant : les ventes
+  // futures décompteront depuis ce nouveau point de référence.
+  const now = nowIso();
+  const courant = p.stock - ventesDuProduitDepuis(id, p.stockSetAt || '');
+  p.stock = Math.max(0, courant + delta);
+  p.stockSetAt = now;
+  p.lastModified = now;
   save();
   renderStock();
   renderCaisse();
@@ -713,7 +860,7 @@ function ouvrirAjoutProduit() {
 
 function ouvrirEditProduit(id) {
   const p = produits.find(x => x.id === id);
-  if (!p) return;
+  if (!p || p.deletedAt) return;
   editingId = id;
   document.getElementById('modal-titre').textContent = "Éditer le produit";
   document.getElementById('btn-supprimer').classList.remove('hidden');
@@ -721,7 +868,9 @@ function ouvrirEditProduit(id) {
   document.getElementById('inp-modele').value = p.modele;
   document.getElementById('inp-taille').value = p.taille;
   document.getElementById('inp-prix').value = p.prix;
-  document.getElementById('inp-stock').value = p.stock;
+  // Affiche le stock effectif actuel (baseline − ventes), pas la baseline brute,
+  // pour que l'utilisateur voit "ce qu'il a réellement" avant d'ajuster.
+  document.getElementById('inp-stock').value = stockEffectif(p);
   document.getElementById('modal-produit').classList.remove('hidden');
 }
 
@@ -737,14 +886,22 @@ function sauverProduit() {
   const prix = parseFloat(document.getElementById('inp-prix').value);
   const stock = parseInt(document.getElementById('inp-stock').value);
   if (isNaN(prix) || isNaN(stock)) { showToast("Prix et stock requis", 'error'); return; }
+  const now = nowIso();
   if (editingId) {
     const p = produits.find(x => x.id === editingId);
     p.categorie = cat; p.modele = modele; p.taille = taille;
     p.prix = prix; p.stock = stock;
+    p.lastModified = now;
+    // À la sauvegarde manuelle, on considère que l'utilisateur déclare
+    // "j'ai N en stock à cet instant" → reset baseline systématique.
+    p.stockSetAt = now;
     showToast('Produit modifié');
   } else {
     const newId = produits.length ? Math.max(...produits.map(p => p.id)) + 1 : 1;
-    produits.push({ id: newId, categorie: cat, modele, taille, prix, stock });
+    produits.push({
+      id: newId, categorie: cat, modele, taille, prix, stock,
+      lastModified: now, stockSetAt: now
+    });
     showToast('Produit ajouté');
   }
   save();
@@ -761,7 +918,14 @@ function supprimerProduit() {
     message: 'Cette action est irréversible.',
     okLabel: 'Supprimer',
     onOk: () => {
-      produits = produits.filter(p => p.id !== id);
+      // Tombstone : on garde l'objet pour propager la suppression aux autres
+      // appareils via sync. Le rendering filtre les produits avec deletedAt.
+      const p = produits.find(x => x.id === id);
+      if (p) {
+        const now = nowIso();
+        p.deletedAt = now;
+        p.lastModified = now;
+      }
       save();
       fermerGenModal();
       fermerModal();

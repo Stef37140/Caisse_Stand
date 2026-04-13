@@ -2,6 +2,8 @@
 
 Procédures pour servir l'app, la tester localement et la déployer en production. Indispensable pour valider l'installation PWA (service worker + manifest) qui nécessite **HTTPS** (sauf `localhost`).
 
+> 💡 **Besoin d'un fichier unique à partager ?** Voir la section « Variante portable » en bas de ce document. Un seul `.html` auto-suffisant, sans serveur requis, mais sans les bénéfices PWA (installation, offline via SW).
+
 ---
 
 ## ⚠️ Prérequis HTTPS
@@ -33,9 +35,9 @@ Puis ouvrir `http://localhost:8000` dans Chrome ou Firefox.
 
 ---
 
-## Option B — GitHub Pages (recommandé pour validation mobile)
+## Option B — GitHub Pages (gratuit, même pour repos privés)
 
-HTTPS gratuit, activation en 2 clics, URL stable.
+HTTPS gratuit, activation en 2 clics, URL stable. **Gratuit sans limite pour les repos publics**, et inclus gratuitement dans les repos privés avec une limite très large (100 Go de bande passante/mois, bien au-delà des besoins d'une caisse de stand).
 
 ### Activation
 
@@ -58,44 +60,113 @@ GitHub Pages ne sert pas de header `Service-Worker-Allowed`, donc le scope du SW
 
 ---
 
-## Option C — Synology Web Station (self-hosted)
+## Option C — Synology Web Station (self-hosted, recommandé pour le projet)
 
-Pour un accès LAN-only ou via reverse proxy HTTPS Synology.
+C'est l'option naturelle pour ce projet vu l'écosystème (DS920+, stack Docker déjà en place). **HTTPS obligatoire pour la PWA** — Synology offre tout ce qu'il faut gratuitement via DDNS + Let's Encrypt.
 
 ### Prérequis
 
-- Package **Web Station** installé
-- Certificat HTTPS configuré (Let's Encrypt via DDNS ou cert local via reverse proxy)
+- Package **Web Station** installé (DSM 7+)
+- **DDNS Synology** actif (`toncompte.synology.me`) : Panneau de config → Accès externe → DDNS → Ajouter → Synology
+- **Certificat Let's Encrypt** auto-renouvelé : Panneau de config → Sécurité → Certificat → Ajouter → Get a certificate from Let's Encrypt
+- Ports 80 (validation Let's Encrypt) et 443 (HTTPS) ouverts sur la box vers le NAS
 
-### Déploiement direct (Web Station)
+### Étape 1 — Déployer les fichiers
 
-1. Web Station → Portail Web → Créer
-2. Type : `Nom du nom du domaine` ou `Port`
-3. Dossier : `/web/caisse_stand/` (ou un sous-dossier si tu préfères)
-4. Copier le contenu du repo (`index.html`, `manifest.json`, `sw.js`, `icons/`) dans ce dossier via File Station, SSH ou `rsync`
-5. Accéder via `https://synology.local/caisse_stand/` (ou ton nom de domaine DDNS)
+Le plus simple : cloner le repo directement sur le NAS via SSH.
 
-### Déploiement via Docker nginx (alternative)
+```bash
+# Connexion SSH au NAS
+ssh admin@toncompte.synology.me
 
-Si tu préfères isoler l'app dans un container :
+# Cloner le repo dans un volume web
+cd /volume1/web/
+git clone https://github.com/Stef37140/Caisse_Stand.git caisse
+
+# Pour les mises à jour ultérieures
+cd /volume1/web/caisse && git pull
+```
+
+Alternative sans SSH : File Station → téléverser le contenu du repo dans `/volume1/web/caisse/`.
+
+### Étape 2 — Portail Web
+
+Web Station → Web Service Portal → Créer :
+- Service : `Static website`
+- Nom : `Caisse Stand`
+- Port : `8080` (ou autre libre)
+- Document root : `/web/caisse`
+
+Teste : `http://ip-nas:8080/` doit afficher l'app en HTTP.
+
+### Étape 3 — Reverse proxy HTTPS
+
+Panneau de config → Portail des applications → Reverse Proxy → Créer :
+- **Source** :
+  - Protocole : `HTTPS`
+  - Nom d'hôte : `caisse.toncompte.synology.me` (ou `toncompte.synology.me` + un sous-path)
+  - Port : `443`
+- **Destination** :
+  - Protocole : `HTTP`
+  - Nom d'hôte : `localhost`
+  - Port : `8080`
+- Onglet **En-têtes personnalisés** : laisse par défaut (pas de config SW particulière nécessaire)
+
+Puis l'URL finale est : **`https://caisse.toncompte.synology.me/`**
+
+### Étape 4 — Partager
+
+Envoyer simplement cette URL à la personne qui utilisera l'app. Sur iPhone/Android, elle pourra l'installer comme décrit plus bas.
+
+### Alternative — Docker nginx
+
+Si tu préfères isoler l'app dans un container (plus propre si tu as déjà une stack Docker) :
 
 ```yaml
-# docker-compose.yml
+# /volume1/docker/caisse/docker-compose.yml
 services:
   caisse:
     image: nginx:alpine
     container_name: caisse_stand
     restart: unless-stopped
     volumes:
-      - ./Caisse_Stand:/usr/share/nginx/html:ro
+      - /volume1/web/caisse:/usr/share/nginx/html:ro
     ports:
       - "8080:80"
-    # Reverse proxy Synology derrière pour le HTTPS
 ```
 
-Puis Control Panel → Application Portal → Reverse Proxy → ajouter :
-- Source : `https://caisse.synology.local` (port 443)
-- Destination : `http://localhost:8080`
+Lancer : `cd /volume1/docker/caisse && docker-compose up -d`. Puis reverse proxy comme en étape 3.
+
+### Mises à jour
+
+Quand tu push une nouvelle version :
+
+```bash
+ssh admin@toncompte.synology.me
+cd /volume1/web/caisse && git pull
+```
+
+Les utilisateurs recevront la mise à jour à leur prochaine ouverture de l'app (le service worker détectera la nouvelle version et affichera la bannière "Nouvelle version disponible").
+
+---
+
+## Option D — Cloudflare Pages (miroir gratuit, fallback)
+
+Pour avoir une URL de secours si le NAS tombe. Gratuit, 500 builds/mois, HTTPS auto, CDN mondial.
+
+1. Créer un compte sur [pages.cloudflare.com](https://pages.cloudflare.com)
+2. Connect to Git → sélectionner le repo GitHub `Caisse_Stand`
+3. Build settings : **aucun** (pas de framework, pas de build command)
+4. Output directory : `/` (racine du repo)
+5. Déployer — URL finale : `https://caisse-stand.pages.dev`
+
+Chaque `git push` redéploie automatiquement. Tu peux pointer un sous-domaine custom (ex. `caisse.tondomaine.com`) sur cette URL.
+
+---
+
+## Option E — Netlify / Vercel / Render
+
+Équivalents à Cloudflare Pages, même principe (git push → deploy auto → HTTPS). Tous gratuits pour usage personnel avec des limites très larges. Choisir selon préférence.
 
 ---
 
@@ -165,9 +236,53 @@ Non lié à la PWA. L'app écrit déjà le BOM UTF-8. Si problème : vérifier q
 
 ---
 
+## 📦 Variante portable (fichier unique sans serveur)
+
+Pour le cas « j'envoie l'app à quelqu'un qui va juste double-cliquer dessus, sans compte, sans hébergement, sans rien à installer », il existe une variante générée par script :
+
+### Génération
+
+```bash
+# Depuis la racine du repo, avec internet
+python3 scripts/build-portable.py
+
+# Si le CDN Tailwind est injoignable, fournir un Tailwind local
+python3 scripts/build-portable.py --tailwind-file /chemin/vers/tailwind.js
+```
+
+Produit `dist/caisse-stand-portable.html` (~400 Ko avec Tailwind inliné).
+
+### Utilisation
+
+- **Double-clic** : ouvre dans le navigateur par défaut, fonctionne immédiatement
+- **Email / AirDrop / WhatsApp** : envoyer le fichier en pièce jointe
+- **Clé USB** : copier le fichier, le destinataire ouvre depuis la clé
+
+### Limitations vs PWA complète
+
+| Critère | PWA complète (index.html + SW) | Portable (fichier unique) |
+|---|---|---|
+| Installation "comme une app" (icône écran d'accueil) | ✅ | ❌ (s'ouvre comme une page web) |
+| Offline au tout premier lancement | ✅ via SW | ✅ tout est dans le fichier |
+| Mises à jour automatiques | ✅ via SW + bannière | ❌ renvoyer un nouveau fichier |
+| Multi-appareils avec même URL | ✅ | ❌ (chaque appareil a son fichier) |
+| Taille | ~48 Ko (hors Tailwind cdn) | ~400 Ko (Tailwind inliné) |
+| Nécessite un serveur HTTPS | Oui (sauf localhost) | Non |
+
+### Quand utiliser laquelle ?
+
+- **PWA complète** : usage quotidien, stand de marché, partage à plusieurs téléphones
+- **Portable** : démo isolée, backup offline, dépannage quand le NAS est down, partage one-shot à un néophyte
+
+Les deux variantes partagent le même code source (`index.html`). Le build portable fait juste un stripping + inlining automatique.
+
+---
+
 ## 📚 Références
 
 - [web.dev — Add a web app manifest](https://web.dev/articles/add-manifest)
 - [web.dev — Service workers: an introduction](https://web.dev/articles/service-workers-cache-storage)
 - [MDN — beforeinstallprompt](https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeinstallprompt_event)
 - [web.dev — Maskable icons](https://web.dev/articles/maskable-icon)
+- [Synology — Let's Encrypt sur DSM](https://kb.synology.com/en-us/DSM/help/DSM/AdminCenter/connection_certificate)
+- [Cloudflare Pages — Quickstart](https://developers.cloudflare.com/pages/get-started/)

@@ -13,9 +13,10 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
-## [3.0.0] — PWA installable
+## [3.0.0] — PWA installable + variante portable
 
 ### Ajouté
+- **Variante portable** générée par `scripts/build-portable.py` : un fichier `dist/caisse-stand-portable.html` auto-suffisant (~400 Ko, Tailwind inliné) pour les cas de partage direct à un utilisateur non technique. Pas d'installation PWA mais fonctionne en double-clic sans serveur. Marqueurs `PWA-CARDS-*` et `PWA-JS-*` dans `index.html` pour un stripping fiable
 - **`manifest.json`** à la racine (name, short_name, display standalone, orientation portrait, theme_color `#1e3a8a`, background_color `#f1f5f9`)
 - **Service worker `sw.js`** avec stratégie cache-first
   - Pré-cache de l'app-shell à l'install (index.html, manifest, icônes)

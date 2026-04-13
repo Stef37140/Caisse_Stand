@@ -18,24 +18,35 @@ PWA (Progressive Web App) de **caisse enregistreuse locale et auto-hébergée** 
 
 ## 🚀 Démarrage rapide
 
-### Option 1 — Ouverture directe (dev)
+Deux variantes cohabitent selon l'usage :
+
+### 🌐 Variante PWA installable (recommandée, usage quotidien)
+
+Fichiers : `index.html` + `manifest.json` + `sw.js` + `icons/`. Nécessite un hébergement HTTPS.
+
+- **Auto-hébergement Synology Web Station** (DDNS + Let's Encrypt, guide détaillé dans [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md))
+- **GitHub Pages** (gratuit, HTTPS auto)
+- **Cloudflare Pages / Netlify / Vercel** (gratuit, CDN mondial)
+
+Une fois en ligne : l'utilisateur ouvre l'URL, installe via "Partager → Sur l'écran d'accueil" (iOS) ou bouton "Installer" (Android) → icône sur l'écran d'accueil → fonctionne offline complet grâce au service worker.
+
+### 📦 Variante portable (fichier unique, partage direct)
+
+Pour partager l'app à une personne qui va juste double-cliquer sur un fichier reçu par email / AirDrop / clé USB. Un seul `.html` auto-suffisant (~400 Ko, Tailwind inliné).
 
 ```bash
-# Serveur local minimal pour tester
-python3 -m http.server 8000
-# Puis ouvrir http://localhost:8000
+python3 scripts/build-portable.py
+# → dist/caisse-stand-portable.html
 ```
 
-> ⚠️ En `file://` direct les téléchargements peuvent échouer sur certains navigateurs. Préférer un serveur HTTP.
+Pas d'installation PWA, pas de mises à jour auto, mais rien à héberger. Voir [`dist/README.md`](dist/README.md) et [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) pour la comparaison détaillée.
 
-### Option 2 — Hébergement statique
+### 💻 Dev local rapide
 
-L'app tient dans un seul fichier `index.html` (auto-suffisant, Tailwind via CDN). Elle peut être déployée sur :
-
-- GitHub Pages (HTTPS gratuit — indispensable pour installer en PWA)
-- Synology Web Station (voir `docs/DEPLOIEMENT.md` à venir en V3.1)
-- Vercel, Netlify, Cloudflare Pages, etc.
-- Container Docker nginx
+```bash
+python3 -m http.server 8000
+# → http://localhost:8000 (localhost autorise le service worker)
+```
 
 ## 🏗️ Stack technique
 

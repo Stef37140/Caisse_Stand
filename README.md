@@ -50,6 +50,17 @@ python3 -m http.server 8000
 # → http://localhost:8000 (localhost autorise le service worker)
 ```
 
+## 📖 Documentation
+
+- **[`GUIDE_UTILISATEUR.md`](GUIDE_UTILISATEUR.md)** — Présentation simple pour la personne qui va utiliser l'app au stand (non technique)
+- **[`CLAUDE.md`](CLAUDE.md)** — Contexte projet complet pour reprendre le développement
+- **[`CHANGELOG.md`](CHANGELOG.md)** — Historique des versions
+- **[`ROADMAP.md`](ROADMAP.md)** — Prochaines étapes priorisées
+- **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** — Décisions techniques, modèle de données, patterns
+- **[`docs/BUGS_RESOLUS.md`](docs/BUGS_RESOLUS.md)** — Historique bugs + fixes (pièges à ne pas réintroduire)
+- **[`docs/CHECKLIST_TESTS.md`](docs/CHECKLIST_TESTS.md)** — Scénarios de tests manuels avant release
+- **[`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md)** — Procédures d'hébergement (Synology, Cloudflare Pages, GitHub Pages) + setup sync KV
+
 ## 🏗️ Stack technique
 
 Volontairement minimaliste :

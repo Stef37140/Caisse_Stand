@@ -34,7 +34,7 @@ Rendre l'app installable sur iPhone Safari et Android Chrome comme une vraie app
 
 - [ ] Procédure Synology Web Station (ou container Docker nginx)
 - [ ] Alternative GitHub Pages (HTTPS indispensable pour le service worker et certaines API PWA)
-- [ ] Tests depuis le réseau local Stéphane + extérieur
+- [ ] Tests depuis le réseau local + accès extérieur
 
 ## V3.2 — Images produits
 

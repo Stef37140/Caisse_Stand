@@ -62,12 +62,14 @@ GitHub Pages ne sert pas de header `Service-Worker-Allowed`, donc le scope du SW
 
 ## Option C — Synology Web Station (self-hosted, recommandé pour le projet)
 
-C'est l'option naturelle pour ce projet vu l'écosystème (DS920+, stack Docker déjà en place). **HTTPS obligatoire pour la PWA** — Synology offre tout ce qu'il faut gratuitement via DDNS + Let's Encrypt.
+Option naturelle si tu as déjà un NAS Synology avec DSM 7+ et une stack Docker. **HTTPS obligatoire pour la PWA** — Synology offre tout ce qu'il faut gratuitement via DDNS + Let's Encrypt.
+
+> Dans les exemples ci-dessous, remplace `<votre-ddns>.synology.me` par ton propre DDNS et `<votre-user>` par ton username GitHub.
 
 ### Prérequis
 
 - Package **Web Station** installé (DSM 7+)
-- **DDNS Synology** actif (`toncompte.synology.me`) : Panneau de config → Accès externe → DDNS → Ajouter → Synology
+- **DDNS Synology** actif (`<votre-ddns>.synology.me`) : Panneau de config → Accès externe → DDNS → Ajouter → Synology
 - **Certificat Let's Encrypt** auto-renouvelé : Panneau de config → Sécurité → Certificat → Ajouter → Get a certificate from Let's Encrypt
 - Ports 80 (validation Let's Encrypt) et 443 (HTTPS) ouverts sur la box vers le NAS
 
@@ -77,11 +79,11 @@ Le plus simple : cloner le repo directement sur le NAS via SSH.
 
 ```bash
 # Connexion SSH au NAS
-ssh admin@toncompte.synology.me
+ssh admin@<votre-ddns>.synology.me
 
 # Cloner le repo dans un volume web
 cd /volume1/web/
-git clone https://github.com/Stef37140/Caisse_Stand.git caisse
+git clone https://github.com/<votre-user>/Caisse_Stand.git caisse
 
 # Pour les mises à jour ultérieures
 cd /volume1/web/caisse && git pull
@@ -104,7 +106,7 @@ Teste : `http://ip-nas:8080/` doit afficher l'app en HTTP.
 Panneau de config → Portail des applications → Reverse Proxy → Créer :
 - **Source** :
   - Protocole : `HTTPS`
-  - Nom d'hôte : `caisse.toncompte.synology.me` (ou `toncompte.synology.me` + un sous-path)
+  - Nom d'hôte : `caisse.<votre-ddns>.synology.me` (ou `<votre-ddns>.synology.me` + un sous-path)
   - Port : `443`
 - **Destination** :
   - Protocole : `HTTP`
@@ -112,7 +114,7 @@ Panneau de config → Portail des applications → Reverse Proxy → Créer :
   - Port : `8080`
 - Onglet **En-têtes personnalisés** : laisse par défaut (pas de config SW particulière nécessaire)
 
-Puis l'URL finale est : **`https://caisse.toncompte.synology.me/`**
+Puis l'URL finale est : **`https://caisse.<votre-ddns>.synology.me/`**
 
 ### Étape 4 — Partager
 
@@ -142,7 +144,7 @@ Lancer : `cd /volume1/docker/caisse && docker-compose up -d`. Puis reverse proxy
 Quand tu push une nouvelle version :
 
 ```bash
-ssh admin@toncompte.synology.me
+ssh admin@<votre-ddns>.synology.me
 cd /volume1/web/caisse && git pull
 ```
 

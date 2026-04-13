@@ -29,7 +29,7 @@ Ce fichier sert de **bridge** entre les sessions Claude Code sur différents pos
 - **[2026-04-13] Anti-pattern "patcher le DOM après ouverture"** : le hack `genModalText` patchait `input.type` après l'appel à `genModal`. Échouait silencieusement quand on appelait `genModal` directement sans passer par le wrapper. Leçon : passer la configuration explicitement en paramètre plutôt que de muter l'état après coup.
   - À intégrer dans : `docs/BUGS_RESOLUS.md` (Bug #7) — fait
 
-- **[2026-04-13] Validation noms d'appareils unicode** : la regex `/^\w+$/` n'accepte pas les accents. Pour du français, utiliser `/^[\p{L}\p{N} _-]+$/u` avec le flag `u` (propriétés Unicode). Autorise "Stéphane", "Tel Stéf", "iPhone-Caisse".
+- **[2026-04-13] Validation noms d'appareils unicode** : la regex `/^\w+$/` n'accepte pas les accents. Pour du français, utiliser `/^[\p{L}\p{N} _-]+$/u` avec le flag `u` (propriétés Unicode). Autorise des noms comme "Terminal Crêpière", "iPhone-Caisse", "Télé 2".
 
 - **[2026-04-13] Event delegation et stopPropagation** : quand on ajoute des boutons dans une zone parent qui a aussi un handler de clic (ex : toggle panier), toujours prévoir `e.stopPropagation()` sur les actions enfants pour éviter que le clic ne bulle vers le parent. Même si la zone du bouton est techniquement hors du parent cliquable, le comportement est plus robuste.
 

@@ -62,7 +62,7 @@ Application **single-file** : tout tient dans `index.html` (HTML + CSS via Tailw
   date: String,         // "12/04/2026" (format FR)
   heure: String,        // "14:35"
   deviceId: String,     // "dev_abc123"
-  deviceLabel: String,  // "Tel Stéf"
+  deviceLabel: String,  // "Terminal 1"
   items: [
     {
       id: Number,       // produit.id
@@ -237,7 +237,7 @@ Format pivot complet avec metadata :
   "version": 2,
   "exportedAt": "2026-04-12T14:30:00.000Z",
   "deviceId": "dev_abc123",
-  "deviceLabel": "Tel Stéf",
+  "deviceLabel": "Terminal 1",
   "produits": [...],
   "ventes": [...],
   "fondCaisse": 50

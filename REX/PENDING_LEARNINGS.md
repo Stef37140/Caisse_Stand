@@ -19,6 +19,37 @@ Ce fichier sert de **bridge** entre les sessions Claude Code sur différents pos
 
 *(Ajouter ici les apprentissages de la session en cours)*
 
+### Session 2026-04-13 (3) — Sync stocks multi-téléphones v3.1.0
+
+- **[2026-04-13] Stock event-sourced > stock muté** : pour permettre la sync multi-appareils, ne JAMAIS muter le stock directement à la vente. Modèle : `produit.stock` = baseline horodatée par `stockSetAt`, stock affiché = baseline − ventes du produit après baseline − panier. Conséquence magique : importer les ventes d'un autre téléphone décrémente automatiquement le stock chez tous, sans logique de merge complexe. Last-write-wins ne fonctionne que si on change cette structure.
+  - À intégrer dans : `docs/ARCHITECTURE.md` (modèle de données V3.1+)
+
+- **[2026-04-13] Tombstones pour la suppression** : si on supprime un produit en `produits.filter()`, et qu'un autre appareil n'a pas vu cette suppression, sa sync va re-créer le produit. Solution : marquer `deletedAt` au lieu de retirer, propager via sync, filtrer à l'affichage avec `produitsActifs()`. Pattern standard distributed systems.
+
+- **[2026-04-13] Compression deflate + base64 = 10× sur du JSON répétitif** : les payloads de sync (produits + ventes) sont très répétitifs (mêmes structures, mêmes IDs). pako.deflate les compresse à ~10 % de leur taille. 80 ventes + 30 produits = 22 KB JSON → 2.2 KB compressé → 1 seul QR code de 280×280 pixels suffit.
+
+- **[2026-04-13] BarcodeDetector vs jsQR** : la nouvelle API `BarcodeDetector` est dispo sur iOS 17+ Safari et Chrome récent → 0 KB lib supplémentaire et performances natives. Mais beaucoup de vieux appareils n'en bénéficient pas. Pattern : try BarcodeDetector first, fallback to jsQR (130 KB minifié). Le toujours-essayer-natif-d'abord est la bonne stratégie même si la lib JS est dispo.
+
+- **[2026-04-13] Multi-segment QR avec batchId aléatoire** : pour qu'un payload trop gros tienne sur plusieurs QR codes scannables dans n'importe quel ordre : préfixer chaque chunk avec `<magic>|<batchId6chars>|<idx>/<total>|<chunk_b64>`. Le receveur stocke les segments dans une `Map` indexée par idx, finalise quand `Map.size === total`. Idempotent si un segment est rescanné par erreur.
+
+- **[2026-04-13] Cloudflare Pages Functions + KV = backend sync gratuit** : pour ~3 phones qui synchent toutes les 30 s pendant 8 h, la conso est ~6 % du quota free tier (1k writes/jour, 100k reads/jour). Pattern simple et sans race condition : 1 clé KV par appareil (`state:<deviceId>`), pas de merge serveur, le client merge tous les états reçus. Atomicité par clé KV suffit.
+
+- **[2026-04-13] Comparaison de tokens en temps constant** : pour éviter les timing attacks sur l'auth Bearer, comparer le token octet par octet avec un XOR cumulé au lieu de `===`. Pattern :
+  ```js
+  let diff = 0;
+  for (let i = 0; i < provided.length; i++) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
+  ```
+  Pas critique pour un projet personnel mais coûte 0 et évite la mauvaise habitude.
+
+- **[2026-04-13] CORS + Cloudflare Access** : si on protège l'app avec Cloudflare Access (login email), il faut une exception pour `/api/*` sinon le service worker / fetch ne peut pas atteindre l'endpoint sans login interactif. La sécurité reste assurée par le SYNC_TOKEN.
+
+- **[2026-04-13] visibilitychange + online events** : pour qu'une app sync quand l'utilisateur revient dessus (lance après l'avoir fermée, ou bascule depuis une autre app), écouter `document.addEventListener('visibilitychange', ...)` et `window.addEventListener('online', ...)`. Polling pur de 30 s ne suffit pas — on rate les transitions de visibilité.
+
+---
+
 ### Session 2026-04-13 (suite) — 3 correctifs UX/Sync (v3.0.1)
 
 - **[2026-04-13] Piège "Set avant boucle mutante"** : dans `handleImport`, le `Set existingIds` était calculé avant la boucle de fusion et jamais mis à jour. Conséquence : doubles imports possibles si une vente commune existait dans 2 fichiers du même batch. Leçon générique : **re-synchroniser l'index utilisé pour les tests d'appartenance après chaque mutation de la collection**, ou utiliser une `Map` et la mettre à jour en place.

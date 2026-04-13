@@ -13,6 +13,81 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [3.1.0] — Sync stocks multi-téléphones (QR P2P + Cloud auto)
+
+Synchronisation cohérente du stock + des ventes entre plusieurs téléphones
+avec deux mécanismes complémentaires : QR code peer-to-peer (offline) et
+Cloudflare KV via Pages Functions (auto en réseau).
+
+### Refactoring fondateur
+
+- **Modèle event-sourced du stock** : `produit.stock` devient une baseline
+  manuelle horodatée par `stockSetAt`. Le stock affiché est calculé
+  dynamiquement = baseline − ventes du produit après baseline − panier.
+  Conséquence : importer les ventes d'un autre téléphone décrémente
+  automatiquement le stock chez tous, sans muter aucune baseline → pas
+  de conflit possible. `finaliserVente` et `annulerDerniere` ne mutent
+  plus `p.stock` directement.
+- **Tombstones** : la suppression d'un produit pose `deletedAt` au lieu
+  de retirer du tableau, pour propager la suppression aux autres
+  appareils via sync. Le rendu filtre via `produitsActifs()`.
+- **Catalogue last-write-wins** : `produit.lastModified` mis à jour à
+  chaque édition, sert de critère de résolution de conflit en sync.
+- Migration douce dans `load()` pour les données legacy.
+
+### Sync QR P2P (offline)
+
+- Nouveau bloc Sync : "📷 Sync rapide entre téléphones (offline)"
+- Boutons "📤 Afficher mon QR" et "📥 Scanner un QR"
+- Pipeline : `buildSyncPayload(cutoff)` → JSON → pako.deflate → base64
+  → chunking (1800 bytes/segment) → QR codes (qrcode.js)
+- Ratio de compression mesuré : 80 ventes + 30 produits → 22 KB JSON
+  → 2.2 KB compressé (10×) → tient dans 1 seul QR
+- Multi-segments avec navigation ◀/▶ si payload > capacité QR
+- Scan : caméra arrière (`facingMode: 'environment'`), API native
+  `BarcodeDetector` quand dispo (iOS 17+, Chrome récent), fallback
+  jsQR sinon
+- Détection idempotente : le scanner accepte les segments dans n'importe
+  quel ordre et finalise quand tous reçus
+- Suivi par peer dans `localStorage.caisse_sync_state`
+- Affichage "Dernières syncs" avec qui et quand
+
+### Sync Cloud auto (Cloudflare Pages Functions + KV)
+
+- Nouveau bloc Sync : "☁️ Sync auto cloud (en réseau)"
+- Status indicator : ⚪ désactivée / 🟡 idle / 🔵 sync / 🟢 OK / 🔴
+  erreur / 🔌 offline
+- Modal de configuration avec URL + token + bouton "Tester" qui ping
+  le endpoint avant enregistrement
+- Polling automatique toutes les 30 s quand activé et `navigator.onLine`
+- Re-sync immédiate sur événements `online` et `visibilitychange`
+- Backend `functions/api/sync.js` (Cloudflare Pages Functions) :
+  - GET /api/sync : liste tous les états enregistrés
+  - POST /api/sync : upload de l'état d'un appareil
+  - Auth Bearer token comparé en temps constant à env `SYNC_TOKEN`
+  - Stockage KV : 1 clé `state:<deviceId>` par appareil
+  - Pas de merge côté serveur (atomicité par clé KV, merge client)
+  - CORS configuré (preflight OPTIONS)
+- Quotas free tier largement suffisants (< 6 % consommé pour 3 phones)
+
+### Vendor libs (pour la sync QR)
+
+- `vendor/qrcode.min.js` (David Shim, MIT, 19 KB) — génération QR
+- `vendor/jsQR.min.js` (Apache 2.0, 130 KB minifié localement via
+  terser) — décodage QR (fallback si pas de BarcodeDetector)
+- `vendor/pako.min.js` (MIT + Zlib, 47 KB) — compression deflate
+- Pré-cachées par le service worker (CACHE_VERSION → caisse-v3.1.0)
+- Inlinées dans la variante portable par `scripts/build-portable.py`
+
+### Documentation
+
+- `docs/DEPLOIEMENT.md` : nouvelle section "Cloudflare Pages Functions +
+  KV" pas-à-pas (création KV namespace, binding, env var SYNC_TOKEN,
+  premier déploiement)
+- `vendor/README.md` : attribution des licences
+
+---
+
 ## [3.0.1] — Trio de correctifs UX/Sync
 
 ### Ajouté

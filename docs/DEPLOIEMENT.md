@@ -152,6 +152,96 @@ Les utilisateurs recevront la mise à jour à leur prochaine ouverture de l'app 
 
 ---
 
+## ☁️ Sync auto cloud — Cloudflare Pages Functions + KV (gratuit)
+
+Pour activer la synchronisation automatique entre plusieurs téléphones via le
+cloud (en complément de la sync QR offline), il faut quelques étapes côté
+Cloudflare. Tout reste **gratuit** et l'app continue de fonctionner sans cette
+config (mode QR seul).
+
+### 1. Créer un namespace KV
+
+1. Dashboard Cloudflare → **Workers & Pages** → onglet **KV** (sidebar)
+2. **Create namespace** → nom : `caisse-sync` (ou ce que tu veux)
+3. Note le **namespace ID** (sera utile en cas de doute, mais pas obligatoire)
+
+### 2. Binder le KV à ton projet Pages
+
+1. **Workers & Pages** → ton projet `Caisse_Stand` → onglet **Settings**
+2. Sidebar → **Functions** (sous Settings)
+3. Section **KV namespace bindings** → **Add binding**
+   - Variable name : `KV` ← *important, doit être exactement ce nom*
+   - KV namespace : `caisse-sync` (celui créé à l'étape 1)
+4. Save
+
+### 3. Définir le token partagé `SYNC_TOKEN`
+
+C'est le mot de passe que les téléphones utiliseront pour s'authentifier
+auprès de l'endpoint `/api/sync`. Génère-en un long et aléatoire.
+
+```bash
+# Génère un token aléatoire de 48 chars
+openssl rand -base64 36
+# Exemple : 4vXz8Hk2pLn5qRtY7sUw1bN6mF3jK9aD0gHc8eIo
+```
+
+1. **Workers & Pages** → ton projet → **Settings** → **Environment variables**
+2. **Production** → **Add variable**
+   - Variable name : `SYNC_TOKEN` ← *exactement ce nom*
+   - Value : le token généré ci-dessus
+   - **Type : Secret** ← *coche la case "Encrypt"* pour que le token ne
+     s'affiche jamais en clair dans le dashboard
+3. Save
+
+### 4. Déployer
+
+Le code des Functions est déjà dans le repo (`functions/api/sync.js`). À
+chaque `git push`, Cloudflare Pages le déploie automatiquement.
+
+Si c'est ton premier push après l'ajout des Functions, attends 30-60 s puis
+teste depuis n'importe où :
+
+```bash
+# Test sans auth → doit retourner 401
+curl https://caisse-stand.pages.dev/api/sync
+
+# Test avec auth → doit retourner {"states":[],"count":0}
+curl -H "Authorization: Bearer <ton-SYNC_TOKEN>" \
+     https://caisse-stand.pages.dev/api/sync
+```
+
+### 5. Activer côté téléphones
+
+Sur chaque téléphone :
+
+1. Ouvrir l'app → onglet **Sync** → carte "☁️ Sync auto cloud"
+2. Tap **⚙ Configurer**
+3. Renseigner :
+   - URL : `https://caisse-stand.pages.dev/api/sync` (ton domaine)
+   - Token : le `SYNC_TOKEN` (le même sur tous les téléphones)
+4. Cocher **Activer la sync auto**
+5. Tap **Tester** → doit afficher ✓ vert
+6. Tap **Enregistrer**
+
+L'indicateur passe à 🟢 À jour après le premier round-trip réussi. Les ventes
+faites sur n'importe quel téléphone apparaissent automatiquement sur les
+autres dans les 30 secondes (quand ils sont en ligne).
+
+### 6. Combinaison avec Cloudflare Access (recommandé)
+
+Si tu as activé Cloudflare Access pour restreindre l'accès à l'app à une
+liste d'emails (cf. plus haut), **n'oublie pas d'ajouter une exception**
+pour `/api/sync` — sinon les téléphones ne pourront pas atteindre
+l'endpoint sans login interactif.
+
+Dans Zero Trust → Access → Applications :
+- Soit créer une **2e Application** pour le path `/api/*` avec une policy
+  "Service Auth" et un token, plus complexe
+- Soit (plus simple) utiliser un **path bypass** : Settings → exclure
+  `/api/*` du périmètre protégé. La protection reste sur le SYNC_TOKEN.
+
+---
+
 ## Option D — Cloudflare Pages (miroir gratuit, fallback)
 
 Pour avoir une URL de secours si le NAS tombe. Gratuit, 500 builds/mois, HTTPS auto, CDN mondial.

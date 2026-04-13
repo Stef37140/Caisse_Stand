@@ -91,7 +91,10 @@
 
   <!-- STOCK -->
   <section id="view-stock" class="flex-1 hidden p-3 pb-24 scroll-area overflow-y-auto" style="max-height: calc(100vh - 100px);">
-    <button id="btn-ajouter-produit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold mb-3">+ Ajouter un produit</button>
+    <div class="flex gap-2 mb-3">
+      <button id="btn-ajouter-produit" class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-bold">+ Ajouter un produit</button>
+      <button id="btn-gerer-taxo" class="bg-slate-700 text-white px-3 py-3 rounded-lg font-semibold text-sm" title="Gérer catégories, modèles, tailles">⚙ Référentiel</button>
+    </div>
     <div id="liste-stock" class="space-y-2"></div>
   </section>
 
@@ -211,23 +214,19 @@
       <div>
         <label class="text-xs font-semibold text-slate-600">Catégorie</label>
         <select id="inp-cat" class="w-full border rounded-lg px-3 py-2 mt-1">
-          <option value="T-Shirt">T-Shirt</option>
-          <option value="Pull">Pull</option>
-          <option value="Sweat">Sweat</option>
+          <!-- Peuplé dynamiquement par populerSelectsProduit() depuis la taxonomie -->
         </select>
       </div>
       <div>
         <label class="text-xs font-semibold text-slate-600">Modèle / Dessin</label>
         <select id="inp-modele" class="w-full border rounded-lg px-3 py-2 mt-1">
-          <option>Loup</option><option>Tiki</option><option>Arbre de vie</option>
-          <option>Sound System</option><option>Fuck</option><option>Lion</option>
-          <option>Singes de la sagesse</option>
+          <!-- Peuplé dynamiquement -->
         </select>
       </div>
       <div>
         <label class="text-xs font-semibold text-slate-600">Taille</label>
         <select id="inp-taille" class="w-full border rounded-lg px-3 py-2 mt-1">
-          <option>S</option><option selected>M</option><option>L</option><option>XL</option><option>XXL</option>
+          <!-- Peuplé dynamiquement -->
         </select>
       </div>
       <div class="grid grid-cols-2 gap-2">
@@ -284,6 +283,23 @@
   </div>
 </div>
 
+<!-- MODAL Référentiel : gestion catégories / modèles / tailles -->
+<div id="modal-taxo" class="hidden fixed inset-0 modal-bg z-50 flex items-end sm:items-center justify-center">
+  <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:w-96 p-4 max-h-[95vh] overflow-y-auto">
+    <h3 class="text-lg font-bold mb-1">⚙ Gérer le référentiel</h3>
+    <p class="text-xs text-slate-600 mb-3">Ajoute des catégories (Tote bag, Body, Débardeur…), modèles ou tailles. Synchronisé entre tous les téléphones.</p>
+    <div class="flex gap-1 mb-3 border-b">
+      <button data-taxotab="categories" class="taxotab flex-1 py-2 text-sm font-semibold border-b-2 border-blue-600">Catégories</button>
+      <button data-taxotab="modeles"    class="taxotab flex-1 py-2 text-sm font-semibold border-b-2 border-transparent text-slate-500">Modèles</button>
+      <button data-taxotab="tailles"    class="taxotab flex-1 py-2 text-sm font-semibold border-b-2 border-transparent text-slate-500">Tailles</button>
+    </div>
+    <div id="taxo-list" class="space-y-1 mb-3"></div>
+    <div id="taxo-form" class="hidden bg-slate-50 p-3 rounded-lg mb-3 border border-slate-200"></div>
+    <button id="btn-taxo-add" class="w-full bg-emerald-600 text-white py-2 rounded-lg text-sm font-semibold mb-2">+ Ajouter</button>
+    <button id="btn-taxo-close" class="w-full bg-slate-300 py-3 rounded-lg font-semibold">Fermer</button>
+  </div>
+</div>
+
 <!-- MODAL QR : scanner avec la caméra -->
 <div id="modal-qr-scan" class="hidden fixed inset-0 modal-bg z-50 flex items-end sm:items-center justify-center">
   <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:w-96 p-4 max-h-[95vh] overflow-y-auto">
@@ -329,6 +345,304 @@ const ICONS_MODELE = {
   "Sound System": "🔊", "Fuck": "🖕", "Lion": "🦁",
   "Singes de la sagesse": "🙈"
 };
+
+// Palette de couleurs Tailwind disponibles pour les catégories personnalisées.
+// Chaque entrée = classe Tailwind + label affiché dans le picker.
+const PALETTE_COULEURS = [
+  { cls: "bg-orange-500",  nom: "Orange" },
+  { cls: "bg-purple-600",  nom: "Violet" },
+  { cls: "bg-emerald-600", nom: "Vert" },
+  { cls: "bg-blue-600",    nom: "Bleu" },
+  { cls: "bg-red-600",     nom: "Rouge" },
+  { cls: "bg-amber-500",   nom: "Ambre" },
+  { cls: "bg-pink-600",    nom: "Rose" },
+  { cls: "bg-teal-600",    nom: "Sarcelle" },
+  { cls: "bg-cyan-600",    nom: "Cyan" },
+  { cls: "bg-fuchsia-600", nom: "Fuchsia" },
+  { cls: "bg-lime-600",    nom: "Lime" },
+  { cls: "bg-slate-600",   nom: "Gris" },
+];
+
+// ============================
+// TAXONOMIE (catégories, modèles, tailles personnalisables)
+// ============================
+// Chaque item porte : nom (clé d'identification), lastModified, deletedAt?
+// + couleur (catégories), icone (modèles), ordre (tailles).
+// Stockée en localStorage sous 'caisse_taxonomie'. Synchro via buildSyncPayload.
+let taxonomie = { categories: [], modeles: [], tailles: [] };
+
+function taxoLoad() {
+  try {
+    const raw = localStorage.getItem('caisse_taxonomie');
+    if (raw) taxonomie = JSON.parse(raw);
+  } catch(e) { taxonomie = { categories: [], modeles: [], tailles: [] }; }
+  if (!taxonomie.categories) taxonomie.categories = [];
+  if (!taxonomie.modeles) taxonomie.modeles = [];
+  if (!taxonomie.tailles) taxonomie.tailles = [];
+  taxoMigrateInitial();
+}
+
+function taxoSave() {
+  try { localStorage.setItem('caisse_taxonomie', JSON.stringify(taxonomie)); }
+  catch(e) { showToast('Erreur sauvegarde référentiel', 'error'); }
+}
+
+// Crée la taxonomie de base à partir des constantes d'origine si vide.
+// Permet la migration douce des installations V3.1 vers V3.2.
+function taxoMigrateInitial() {
+  const now = nowIso();
+  let changed = false;
+  if (taxonomie.categories.length === 0) {
+    Object.entries(COULEURS_CAT).forEach(([nom, couleur]) => {
+      taxonomie.categories.push({ nom, couleur, lastModified: now });
+    });
+    changed = true;
+  }
+  if (taxonomie.modeles.length === 0) {
+    Object.entries(ICONS_MODELE).forEach(([nom, icone]) => {
+      taxonomie.modeles.push({ nom, icone, lastModified: now });
+    });
+    changed = true;
+  }
+  if (taxonomie.tailles.length === 0) {
+    ['S', 'M', 'L', 'XL', 'XXL'].forEach((nom, i) => {
+      taxonomie.tailles.push({ nom, ordre: i, lastModified: now });
+    });
+    changed = true;
+  }
+  if (changed) taxoSave();
+}
+
+// Helpers de lecture (filtrent les tombstones)
+function categoriesActives() { return taxonomie.categories.filter(c => !c.deletedAt); }
+function modelesActifs()      { return taxonomie.modeles.filter(m => !m.deletedAt); }
+function taillesActives()     {
+  return taxonomie.tailles.filter(t => !t.deletedAt)
+    .sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
+}
+
+// Couleur d'une catégorie (fallback gris si inconnue) — remplace COULEURS_CAT[nom]
+function categorieCouleur(nom) {
+  const c = taxonomie.categories.find(x => x.nom === nom && !x.deletedAt);
+  return (c && c.couleur) || COULEURS_CAT[nom] || 'bg-slate-600';
+}
+// Icône d'un modèle (fallback 👕) — remplace ICONS_MODELE[nom]
+function modeleIcone(nom) {
+  const m = taxonomie.modeles.find(x => x.nom === nom && !x.deletedAt);
+  return (m && m.icone) || ICONS_MODELE[nom] || '👕';
+}
+
+// Vérifie qu'un nom de cat/modele/taille est utilisé par au moins un produit ACTIF.
+// Empêche la suppression d'items du référentiel encore référencés.
+function taxoEstUtilise(type, nom) {
+  const champ = type === 'categorie' ? 'categorie' : (type === 'modele' ? 'modele' : 'taille');
+  return produitsActifs().some(p => p[champ] === nom);
+}
+
+// Mutation atomique d'un item de taxonomie : pose lastModified à now.
+function taxoUpsert(type, item) {
+  const list = taxonomie[type === 'categorie' ? 'categories'
+                       : type === 'modele' ? 'modeles' : 'tailles'];
+  const existing = list.find(x => x.nom === item.nom);
+  if (existing) {
+    Object.assign(existing, item);
+    existing.lastModified = nowIso();
+    delete existing.deletedAt; // si on "ré-ajoute" un item supprimé, on le ressuscite
+  } else {
+    list.push({ ...item, lastModified: nowIso() });
+  }
+  taxoSave();
+}
+
+function taxoDelete(type, nom) {
+  if (taxoEstUtilise(type, nom)) {
+    showToast(`"${nom}" est utilisé par des produits actifs`, 'error');
+    return false;
+  }
+  const list = taxonomie[type === 'categorie' ? 'categories'
+                       : type === 'modele' ? 'modeles' : 'tailles'];
+  const item = list.find(x => x.nom === nom);
+  if (!item) return false;
+  item.deletedAt = nowIso();
+  item.lastModified = item.deletedAt;
+  taxoSave();
+  return true;
+}
+
+// ============================
+// UI MODAL RÉFÉRENTIEL (taxonomie)
+// ============================
+let taxoCurrentTab = 'categories'; // 'categories' | 'modeles' | 'tailles'
+
+function ouvrirTaxo() {
+  taxoCurrentTab = 'categories';
+  renderTaxoTab();
+  document.getElementById('taxo-form').classList.add('hidden');
+  document.getElementById('modal-taxo').classList.remove('hidden');
+}
+
+function fermerTaxo() {
+  document.getElementById('modal-taxo').classList.add('hidden');
+  // Re-render des vues qui dépendent de la taxonomie
+  renderCaisse();
+  renderStock();
+}
+
+function taxoTypeFromTab(tab) {
+  return tab === 'categories' ? 'categorie' : tab === 'modeles' ? 'modele' : 'taille';
+}
+
+function renderTaxoTab() {
+  // Mise à jour des onglets
+  document.querySelectorAll('.taxotab').forEach(b => {
+    if (b.dataset.taxotab === taxoCurrentTab) {
+      b.classList.add('border-blue-600', 'text-blue-700');
+      b.classList.remove('border-transparent', 'text-slate-500');
+    } else {
+      b.classList.remove('border-blue-600', 'text-blue-700');
+      b.classList.add('border-transparent', 'text-slate-500');
+    }
+  });
+  // Liste des items du tab actif
+  const items = taxoCurrentTab === 'categories' ? categoriesActives()
+              : taxoCurrentTab === 'modeles'    ? modelesActifs()
+                                                 : taillesActives();
+  const list = document.getElementById('taxo-list');
+  if (items.length === 0) {
+    list.innerHTML = '<div class="text-slate-400 text-center py-3 text-sm">Aucun</div>';
+    return;
+  }
+  const type = taxoTypeFromTab(taxoCurrentTab);
+  list.innerHTML = items.map(it => {
+    const visu = taxoCurrentTab === 'categories'
+      ? `<span class="${it.couleur || 'bg-slate-600'} w-5 h-5 rounded inline-block mr-2 align-middle"></span>`
+      : taxoCurrentTab === 'modeles'
+        ? `<span class="text-xl mr-2 align-middle">${it.icone || '👕'}</span>`
+        : '<span class="text-slate-400 text-xs mr-2">#' + (it.ordre ?? 0) + '</span>';
+    const nomEnc = encodeURIComponent(it.nom);
+    const used = taxoEstUtilise(type, it.nom);
+    return `
+      <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-lg">
+        <div class="flex-1 min-w-0 truncate">${visu}<span class="font-semibold text-sm align-middle">${it.nom}</span></div>
+        ${used ? '<span class="text-[10px] text-slate-400">utilisé</span>' : ''}
+        <button data-action="taxo-edit" data-nom="${nomEnc}" class="bg-slate-200 px-2 py-1 rounded text-xs">✏</button>
+        <button data-action="taxo-del"  data-nom="${nomEnc}" class="${used ? 'bg-slate-100 text-slate-300' : 'bg-red-100 text-red-700'} px-2 py-1 rounded text-xs">🗑</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function ouvrirTaxoForm(nom) {
+  // nom = null pour création, sinon édition (le nom n'est pas modifiable)
+  const type = taxoTypeFromTab(taxoCurrentTab);
+  const list = taxonomie[taxoCurrentTab];
+  const item = nom ? list.find(x => x.nom === nom) : null;
+  const form = document.getElementById('taxo-form');
+  form.classList.remove('hidden');
+
+  if (taxoCurrentTab === 'categories') {
+    form.innerHTML = `
+      <h4 class="font-semibold text-sm mb-2">${item ? 'Éditer la catégorie' : 'Nouvelle catégorie'}</h4>
+      <label class="block text-xs font-semibold mb-1">Nom (ex : Tote bag, Body, Débardeur)</label>
+      <input id="taxo-form-nom" type="text" maxlength="30" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" ${item ? 'disabled' : ''} value="${item ? item.nom : ''}">
+      <label class="block text-xs font-semibold mb-1">Couleur (boutons en caisse)</label>
+      <div class="grid grid-cols-6 gap-1 mb-3">
+        ${PALETTE_COULEURS.map(c => `
+          <button type="button" data-couleur="${c.cls}" title="${c.nom}" class="taxo-couleur ${c.cls} h-10 rounded ${item && item.couleur === c.cls ? 'ring-4 ring-blue-500' : ''}"></button>
+        `).join('')}
+      </div>
+      <div class="flex gap-2">
+        <button id="taxo-form-cancel" class="flex-1 bg-slate-300 py-2 rounded-lg text-sm font-semibold">Annuler</button>
+        <button id="taxo-form-save" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">Enregistrer</button>
+      </div>
+    `;
+    form.dataset.couleur = item ? (item.couleur || PALETTE_COULEURS[0].cls) : PALETTE_COULEURS[0].cls;
+  } else if (taxoCurrentTab === 'modeles') {
+    form.innerHTML = `
+      <h4 class="font-semibold text-sm mb-2">${item ? 'Éditer le modèle' : 'Nouveau modèle'}</h4>
+      <label class="block text-xs font-semibold mb-1">Nom du dessin / motif</label>
+      <input id="taxo-form-nom" type="text" maxlength="40" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" ${item ? 'disabled' : ''} value="${item ? item.nom : ''}">
+      <label class="block text-xs font-semibold mb-1">Emoji ou icône</label>
+      <input id="taxo-form-icone" type="text" maxlength="4" class="w-full border rounded-lg px-3 py-2 mb-1 text-3xl text-center" placeholder="🐺" value="${item ? (item.icone || '') : ''}">
+      <p class="text-xs text-slate-500 mb-3">Sur mobile : tap sur le 🌐 du clavier puis sélectionne un emoji. Si vide, 👕 par défaut.</p>
+      <div class="flex gap-2">
+        <button id="taxo-form-cancel" class="flex-1 bg-slate-300 py-2 rounded-lg text-sm font-semibold">Annuler</button>
+        <button id="taxo-form-save" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">Enregistrer</button>
+      </div>
+    `;
+  } else { // tailles
+    const ordreParDefaut = item ? (item.ordre ?? 0) : taillesActives().length;
+    form.innerHTML = `
+      <h4 class="font-semibold text-sm mb-2">${item ? 'Éditer la taille' : 'Nouvelle taille'}</h4>
+      <label class="block text-xs font-semibold mb-1">Nom (XS, S, M, L, XL, XXL, 36, 38, Unique…)</label>
+      <input id="taxo-form-nom" type="text" maxlength="10" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" ${item ? 'disabled' : ''} value="${item ? item.nom : ''}">
+      <label class="block text-xs font-semibold mb-1">Ordre d'affichage (plus petit = en premier)</label>
+      <input id="taxo-form-ordre" type="number" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" value="${ordreParDefaut}">
+      <div class="flex gap-2">
+        <button id="taxo-form-cancel" class="flex-1 bg-slate-300 py-2 rounded-lg text-sm font-semibold">Annuler</button>
+        <button id="taxo-form-save" class="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold">Enregistrer</button>
+      </div>
+    `;
+  }
+
+  // Sélecteur de couleur (catégories uniquement)
+  document.querySelectorAll('.taxo-couleur').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('.taxo-couleur').forEach(x => x.classList.remove('ring-4', 'ring-blue-500'));
+      b.classList.add('ring-4', 'ring-blue-500');
+      form.dataset.couleur = b.dataset.couleur;
+    });
+  });
+
+  document.getElementById('taxo-form-cancel').addEventListener('click', () => form.classList.add('hidden'));
+  document.getElementById('taxo-form-save').addEventListener('click', () => {
+    const nomVal = (document.getElementById('taxo-form-nom').value || '').trim();
+    if (!nomVal) { showToast('Nom requis', 'error'); return; }
+    // Garde-fous : noms commençant par espace, doublons (sauf si on édite l'item lui-même)
+    if (!item) {
+      const existing = list.find(x => x.nom.toLowerCase() === nomVal.toLowerCase());
+      if (existing && !existing.deletedAt) {
+        showToast('Ce nom existe déjà', 'error'); return;
+      }
+    }
+    const payload = { nom: item ? item.nom : nomVal };
+    if (taxoCurrentTab === 'categories') {
+      payload.couleur = form.dataset.couleur || PALETTE_COULEURS[0].cls;
+    } else if (taxoCurrentTab === 'modeles') {
+      payload.icone = (document.getElementById('taxo-form-icone').value || '').trim() || '👕';
+    } else {
+      const o = parseInt(document.getElementById('taxo-form-ordre').value);
+      payload.ordre = isNaN(o) ? 0 : o;
+    }
+    taxoUpsert(taxoTypeFromTab(taxoCurrentTab), payload);
+    form.classList.add('hidden');
+    renderTaxoTab();
+    if (typeof cloudClearPushFp === 'function') cloudClearPushFp();
+    showToast(item ? 'Modifié' : 'Ajouté');
+  });
+}
+
+function supprimerTaxoItem(nom) {
+  const type = taxoTypeFromTab(taxoCurrentTab);
+  if (taxoEstUtilise(type, nom)) {
+    showToast(`"${nom}" est utilisé par des produits actifs`, 'error');
+    return;
+  }
+  genModal({
+    title: `Supprimer "${nom}" ?`,
+    message: 'Cette suppression sera propagée aux autres téléphones lors de la sync.',
+    okLabel: 'Supprimer',
+    onOk: () => {
+      const ok = taxoDelete(type, nom);
+      if (ok) {
+        renderTaxoTab();
+        if (typeof cloudClearPushFp === 'function') cloudClearPushFp();
+      }
+      fermerGenModal();
+    }
+  });
+}
 
 // ============================
 // STOCK DISPO (modèle event-sourced pour cohérence multi-appareils)
@@ -454,16 +768,23 @@ function syncStateSet(peerId, isoTs) {
 
 // Construit un payload de sync (delta depuis sinceTs, ou complet si null).
 // Format pivot indépendant du transport (QR, Cloud, JSON…).
+// v=2 ajoute la taxonomie (catégories, modèles, tailles personnalisables).
 function buildSyncPayload(sinceTs) {
   const cutoff = sinceTs || '';
+  const tx = taxonomie || { categories: [], modeles: [], tailles: [] };
   return {
-    v: 1,                             // version du format
+    v: 2,                             // version du format
     from: deviceId,
     fromLabel: deviceLabel,
     at: nowIso(),
     since: cutoff,
     produits: produits.filter(p => (p.lastModified || '') > cutoff),
     ventes: ventes.filter(v => (v.timestamp || '') > cutoff),
+    taxonomie: {
+      categories: (tx.categories || []).filter(c => (c.lastModified || '') > cutoff),
+      modeles:    (tx.modeles    || []).filter(m => (m.lastModified || '') > cutoff),
+      tailles:    (tx.tailles    || []).filter(t => (t.lastModified || '') > cutoff),
+    },
   };
 }
 
@@ -474,8 +795,10 @@ function buildSyncPayload(sinceTs) {
 //                       ventesAjoutees, ventesIgnorees, invalides }
 function applySyncPayload(payload) {
   const report = { produitsAjoutes: 0, produitsMaj: 0, produitsSupprimes: 0,
-                   ventesAjoutees: 0, ventesIgnorees: 0, invalides: 0 };
-  if (!payload || payload.v !== 1) return report;
+                   ventesAjoutees: 0, ventesIgnorees: 0, invalides: 0,
+                   taxoAjoutes: 0, taxoMaj: 0, taxoSupprimes: 0 };
+  // Accepte v1 (sans taxonomie) et v2 (avec taxonomie)
+  if (!payload || (payload.v !== 1 && payload.v !== 2)) return report;
 
   // Merge produits (last-write-wins par lastModified)
   if (Array.isArray(payload.produits)) {
@@ -514,6 +837,33 @@ function applySyncPayload(payload) {
     }
     // Tri chronologique post-merge
     ventes.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  }
+
+  // Merge taxonomie (last-write-wins par lastModified, par nom de clé)
+  if (payload.taxonomie) {
+    let taxoChanged = false;
+    for (const type of ['categories', 'modeles', 'tailles']) {
+      const incoming = payload.taxonomie[type] || [];
+      if (!Array.isArray(incoming)) continue;
+      const localList = taxonomie[type];
+      for (const remote of incoming) {
+        if (!remote || !remote.nom || !remote.lastModified) { report.invalides++; continue; }
+        const local = localList.find(x => x.nom === remote.nom);
+        if (!local) {
+          localList.push({ ...remote });
+          if (remote.deletedAt) report.taxoSupprimes++;
+          else report.taxoAjoutes++;
+          taxoChanged = true;
+        } else if ((remote.lastModified || '') > (local.lastModified || '')) {
+          const wasDeleted = !!local.deletedAt;
+          Object.assign(local, remote);
+          if (remote.deletedAt && !wasDeleted) report.taxoSupprimes++;
+          else report.taxoMaj++;
+          taxoChanged = true;
+        }
+      }
+    }
+    if (taxoChanged) taxoSave();
   }
 
   if (payload.from) syncStateSet(payload.from, payload.at || nowIso());
@@ -659,7 +1009,7 @@ function renderCaisse() {
     grid.innerHTML = cats.map(cat => {
       const total = actifs.filter(p => p.categorie === cat).reduce((s,p) => s + stockDispo(p.id), 0);
       return `
-        <button data-action="selcat" data-cat="${cat}" class="btn-product ${COULEURS_CAT[cat] || 'bg-slate-600'} text-white p-4 rounded-lg shadow col-span-3 flex justify-between items-center">
+        <button data-action="selcat" data-cat="${cat}" class="btn-product ${categorieCouleur(cat)} text-white p-4 rounded-lg shadow col-span-3 flex justify-between items-center">
           <span class="text-lg font-bold">${cat}</span>
           <span class="text-xs opacity-90">${total} dispo</span>
         </button>
@@ -674,8 +1024,8 @@ function renderCaisse() {
       const total = actifs.filter(p => p.categorie === selCat && p.modele === m).reduce((s,p) => s + stockDispo(p.id), 0);
       const dispo = total > 0 ? '' : 'opacity-40';
       return `
-        <button data-action="selmodele" data-modele="${encodeURIComponent(m)}" class="btn-product ${COULEURS_CAT[selCat]} text-white p-2 rounded-lg shadow ${dispo}">
-          <div class="text-2xl">${ICONS_MODELE[m] || '👕'}</div>
+        <button data-action="selmodele" data-modele="${encodeURIComponent(m)}" class="btn-product ${categorieCouleur(selCat)} text-white p-2 rounded-lg shadow ${dispo}">
+          <div class="text-2xl">${modeleIcone(m)}</div>
           <div class="text-xs font-bold mt-1 leading-tight">${m}</div>
           <div class="text-xs opacity-80">${total} dispo</div>
         </button>
@@ -689,7 +1039,7 @@ function renderCaisse() {
       const dispo = stockDispo(p.id);
       const cls = dispo > 0 ? '' : 'opacity-40 pointer-events-none';
       return `
-        <button data-action="addpanier" data-id="${p.id}" class="btn-product ${COULEURS_CAT[p.categorie]} text-white p-3 rounded-lg shadow ${cls}">
+        <button data-action="addpanier" data-id="${p.id}" class="btn-product ${categorieCouleur(p.categorie)} text-white p-3 rounded-lg shadow ${cls}">
           <div class="text-xl font-bold">${p.taille}</div>
           <div class="text-sm font-bold">${p.prix} €</div>
           <div class="text-xs opacity-90">dispo: ${dispo}</div>
@@ -874,8 +1224,8 @@ function renderStock() {
     const items = actifs.filter(p => p.categorie === cat);
     html += items.map(p => `
       <div data-action="editprod" data-id="${p.id}" class="flex items-center gap-2 bg-slate-50 p-2 rounded-lg active:bg-slate-200 cursor-pointer">
-        <div class="${COULEURS_CAT[cat] || 'bg-slate-600'} w-2 h-10 rounded"></div>
-        <div class="text-xl">${ICONS_MODELE[p.modele] || '👕'}</div>
+        <div class="${categorieCouleur(cat)} w-2 h-10 rounded"></div>
+        <div class="text-xl">${modeleIcone(p.modele)}</div>
         <div class="flex-1">
           <div class="font-semibold text-sm">${p.modele} · ${p.taille}</div>
           <div class="text-xs text-slate-500">${p.prix} €</div>
@@ -908,13 +1258,43 @@ function modifStock(id, delta) {
 // ============================
 // MODAL PRODUIT
 // ============================
+// Remplit les <select> du modal produit à partir de la taxonomie active.
+// Si une valeur préselectionnée est passée et n'existe pas dans la liste
+// (ex : produit qui référence une catégorie supprimée), on l'ajoute en tête.
+function populerSelectsProduit(cat, modele, taille) {
+  const fillSelect = (id, items, selected) => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = '';
+    const noms = items.map(x => x.nom);
+    if (selected && !noms.includes(selected)) {
+      const opt = document.createElement('option');
+      opt.value = selected; opt.textContent = selected + ' ⚠'; opt.selected = true;
+      sel.appendChild(opt);
+    }
+    items.forEach(it => {
+      const opt = document.createElement('option');
+      opt.value = it.nom;
+      opt.textContent = (it.icone ? it.icone + ' ' : '') + it.nom;
+      if (selected === it.nom) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  };
+  fillSelect('inp-cat',    categoriesActives(), cat);
+  fillSelect('inp-modele', modelesActifs(),     modele);
+  fillSelect('inp-taille', taillesActives(),    taille);
+}
+
 function ouvrirAjoutProduit() {
   editingId = null;
   document.getElementById('modal-titre').textContent = "Ajouter un produit";
   document.getElementById('btn-supprimer').classList.add('hidden');
-  document.getElementById('inp-cat').value = "T-Shirt";
-  document.getElementById('inp-modele').value = "Loup";
-  document.getElementById('inp-taille').value = "M";
+  // Pré-remplit avec le 1er item disponible de chaque référentiel
+  const cats = categoriesActives(), mods = modelesActifs(), tls = taillesActives();
+  populerSelectsProduit(
+    cats[0] && cats[0].nom,
+    mods[0] && mods[0].nom,
+    (tls.find(t => t.nom === 'M') || tls[0] || {}).nom
+  );
   document.getElementById('inp-prix').value = "20";
   document.getElementById('inp-stock').value = "5";
   document.getElementById('modal-produit').classList.remove('hidden');
@@ -926,9 +1306,7 @@ function ouvrirEditProduit(id) {
   editingId = id;
   document.getElementById('modal-titre').textContent = "Éditer le produit";
   document.getElementById('btn-supprimer').classList.remove('hidden');
-  document.getElementById('inp-cat').value = p.categorie;
-  document.getElementById('inp-modele').value = p.modele;
-  document.getElementById('inp-taille').value = p.taille;
+  populerSelectsProduit(p.categorie, p.modele, p.taille);
   document.getElementById('inp-prix').value = p.prix;
   // Affiche le stock effectif actuel (baseline − ventes), pas la baseline brute,
   // pour que l'utilisateur voit "ce qu'il a réellement" avant d'ajuster.
@@ -1861,6 +2239,12 @@ document.addEventListener('click', (e) => {
   else if (action === 'stockminus') { e.stopPropagation(); modifStock(parseInt(target.dataset.id), -1); }
   else if (action === 'panier-dec') { e.stopPropagation(); decrementerLignePanier(parseInt(target.dataset.idx)); }
   else if (action === 'panier-del') { e.stopPropagation(); supprimerLignePanier(parseInt(target.dataset.idx)); }
+  else if (action === 'taxo-edit')  { e.stopPropagation(); ouvrirTaxoForm(decodeURIComponent(target.dataset.nom)); }
+  else if (action === 'taxo-del')   { e.stopPropagation(); supprimerTaxoItem(decodeURIComponent(target.dataset.nom)); }
+
+  // Onglets internes du modal Référentiel
+  const taxotab = target.dataset && target.dataset.taxotab;
+  if (taxotab) { taxoCurrentTab = taxotab; renderTaxoTab(); document.getElementById('taxo-form').classList.add('hidden'); }
 });
 
 // ============================
@@ -1868,6 +2252,7 @@ document.addEventListener('click', (e) => {
 // ============================
 initDevice();
 load();
+taxoLoad();
 
 document.getElementById('session-info').textContent = new Date().toLocaleDateString('fr-FR');
 document.getElementById('device-label').textContent = deviceLabel;
@@ -1903,6 +2288,11 @@ document.getElementById('btn-qr-next').addEventListener('click', () => {
     qrShowState.current++; renderQRSegment();
   }
 });
+
+// Référentiel taxonomie
+document.getElementById('btn-gerer-taxo').addEventListener('click', ouvrirTaxo);
+document.getElementById('btn-taxo-close').addEventListener('click', fermerTaxo);
+document.getElementById('btn-taxo-add').addEventListener('click', () => ouvrirTaxoForm(null));
 
 // Cloud sync (Cloudflare KV)
 document.getElementById('btn-cloud-config').addEventListener('click', ouvrirCloudConfig);

@@ -58,6 +58,23 @@ Pour voir et ajuster ton inventaire.
 
 Le stock se décompte automatiquement à chaque vente — pas besoin d'y penser.
 
+### ⚙ Gérer le référentiel (catégories, modèles, tailles personnalisées)
+
+À côté du bouton "+ Ajouter un produit", le bouton **⚙ Référentiel** ouvre une fenêtre où tu peux créer librement :
+
+- **Catégories** (par exemple : Tote bag, Body, T-Shirt enfant, Débardeur femme…)
+  - Choisis un nom et une couleur (12 disponibles)
+- **Modèles** (nouveaux dessins ou motifs)
+  - Choisis un nom et un emoji (utilise le clavier emoji 🌐 sur mobile)
+- **Tailles** (XS, 36, 38, Unique, etc.)
+  - Choisis un nom et un ordre d'affichage
+
+Les nouveautés apparaissent immédiatement dans la fenêtre d'ajout/édition de produit. Sont aussi **synchronisées** sur les autres téléphones via la sync auto cloud ou QR.
+
+Si tu veux **supprimer** une catégorie/modèle/taille : c'est bloqué tant qu'au moins un produit l'utilise (tu verras un tag "utilisé"). Supprime ou re-catégorise d'abord les produits concernés.
+
+> ℹ️ **À noter** : tu ne peux pas renommer un item du référentiel directement (le nom sert d'identifiant). Si tu veux renommer "T-Shirt" en "T-Shirt Adulte" : crée la nouvelle catégorie, édite chaque produit pour la basculer dessus, puis supprime l'ancienne.
+
 ---
 
 ## 📊 L'onglet Bilan

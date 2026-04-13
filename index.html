@@ -367,13 +367,18 @@ function showToast(msg, type = 'success') {
 let genCallback = null;
 
 function genModal(opts) {
-  // opts : { title, message, input (bool), inputValue, okLabel, cancelLabel, onOk, showRendu (bool), totalDu }
+  // opts : { title, message, input (bool), inputType ('number'|'text'), inputValue,
+  //         inputMode, maxLength, okLabel, cancelLabel, onOk, showRendu (bool), totalDu }
   document.getElementById('gen-title').textContent = opts.title || '';
   document.getElementById('gen-message').textContent = opts.message || '';
   const wrap = document.getElementById('gen-input-wrap');
   const inp = document.getElementById('gen-input');
   if (opts.input) {
     wrap.classList.remove('hidden');
+    const type = opts.inputType || 'number';
+    inp.type = type;
+    inp.inputMode = opts.inputMode || (type === 'number' ? 'decimal' : 'text');
+    inp.maxLength = opts.maxLength || (type === 'text' ? 30 : 524288); // 524288 = défaut HTML
     inp.value = opts.inputValue !== undefined ? opts.inputValue : '';
     inp.placeholder = opts.placeholder || '';
     setTimeout(() => inp.focus(), 100);
@@ -982,16 +987,28 @@ function renderSync() {
     `).join('');
 }
 
+// Autorise lettres (accents inclus), chiffres, espace, tiret, underscore.
+// Interdit le reste (caractères spéciaux de ponctuation, emoji, symboles).
+const DEVICE_LABEL_RE = /^[\p{L}\p{N} _-]+$/u;
+
 function renommerAppareil() {
   genModal({
     title: "Nom de l'appareil",
-    message: "Utilisé pour identifier les ventes de ce téléphone lors des fusions.",
+    message: "Lettres, chiffres, espaces, tirets et underscores (2 à 30 caractères).",
     input: true,
+    inputType: 'text',
     inputValue: deviceLabel,
+    maxLength: 30,
+    placeholder: 'Ex : Tel Stéf, iPhone Marché, Tablette-Caisse',
     okLabel: 'Enregistrer',
     onOk: () => {
       const v = document.getElementById('gen-input').value.trim();
-      if (!v) { showToast('Nom vide', 'error'); return; }
+      if (v.length < 2) { showToast('Nom trop court (2 caractères mini)', 'error'); return; }
+      if (v.length > 30) { showToast('Nom trop long (30 max)', 'error'); return; }
+      if (!DEVICE_LABEL_RE.test(v)) {
+        showToast('Caractères spéciaux interdits', 'error');
+        return;
+      }
       deviceLabel = v;
       localStorage.setItem('caisse_device_label', deviceLabel);
       document.getElementById('device-label').textContent = deviceLabel;
@@ -1000,16 +1017,6 @@ function renommerAppareil() {
       showToast('Appareil renommé');
     }
   });
-}
-
-// Hack : le modal générique a un input type=number, mais pour renommer on veut du texte
-// On remplace l'input dynamiquement
-const origGenModal = genModal;
-function genModalText(opts) {
-  origGenModal(opts);
-  const inp = document.getElementById('gen-input');
-  inp.type = 'text';
-  setTimeout(() => { inp.type = 'number'; }, 5000); // remettre pour les suivants
 }
 
 // ============================

@@ -162,6 +162,22 @@
       </div>
       <div id="qr-last-sync" class="mt-2 text-xs text-cyan-700"></div>
     </div>
+
+    <!-- ============================ -->
+    <!-- SYNC AUTO CLOUD (Cloudflare) -->
+    <!-- ============================ -->
+    <div class="bg-indigo-50 border border-indigo-200 p-3 rounded-lg mb-3">
+      <h3 class="font-bold text-sm text-indigo-900 mb-1">☁️ Sync auto cloud (en réseau)</h3>
+      <p class="text-xs text-indigo-800 mb-2">Synchronise automatiquement entre tous les téléphones quand le réseau est disponible. Optionnelle, complémentaire du QR.</p>
+      <div class="flex items-center justify-between mb-2 text-xs">
+        <span id="cloud-status" class="font-semibold">⚪ Désactivée</span>
+        <span id="cloud-last-sync" class="text-indigo-700"></span>
+      </div>
+      <div class="flex gap-2">
+        <button id="btn-cloud-config" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-semibold">⚙ Configurer</button>
+        <button id="btn-cloud-sync-now" class="flex-1 bg-indigo-700 text-white py-2 rounded-lg text-sm font-semibold">⟳ Sync maintenant</button>
+      </div>
+    </div>
     <!-- PWA-CARDS-START : retiré par scripts/build-portable.py -->
     <div id="install-card" class="hidden bg-emerald-50 border border-emerald-200 p-3 rounded-lg mb-3">
       <h3 class="font-bold text-sm text-emerald-900 mb-1">📲 Installer l'app</h3>
@@ -1581,6 +1597,206 @@ function renderQRLastSync() {
 }
 
 // ============================
+// SYNC AUTO CLOUD (Cloudflare KV via Pages Functions)
+// ============================
+// Config stockée dans localStorage : { url, token, enabled }
+// - url : endpoint Pages Functions, ex 'https://caisse.pages.dev/api/sync'
+// - token : SYNC_TOKEN défini côté Cloudflare Pages (Settings → Env vars)
+// - enabled : booléen, peut être désactivé temporairement sans perdre la conf
+
+let cloudConfig = null;
+let cloudPollInterval = null;
+let cloudLastPushAt = null;
+let cloudLastPullAt = null;
+const CLOUD_POLL_MS = 30000; // 30 secondes
+
+function cloudConfigLoad() {
+  try { cloudConfig = JSON.parse(localStorage.getItem('caisse_cloud_config') || 'null'); }
+  catch(e) { cloudConfig = null; }
+}
+
+function cloudConfigSave(cfg) {
+  cloudConfig = cfg;
+  if (cfg) localStorage.setItem('caisse_cloud_config', JSON.stringify(cfg));
+  else localStorage.removeItem('caisse_cloud_config');
+}
+
+function cloudIsActive() {
+  return cloudConfig && cloudConfig.enabled && cloudConfig.url && cloudConfig.token;
+}
+
+function cloudSetStatus(state, detail) {
+  // state : 'off' | 'idle' | 'syncing' | 'ok' | 'err' | 'offline'
+  const el = document.getElementById('cloud-status');
+  if (!el) return;
+  const labels = {
+    off:     '⚪ Désactivée',
+    idle:    '🟡 En attente',
+    syncing: '🔵 Sync en cours…',
+    ok:      '🟢 À jour',
+    err:     '🔴 Erreur',
+    offline: '🔌 Hors ligne',
+  };
+  el.textContent = labels[state] + (detail ? ' · ' + detail : '');
+}
+
+function cloudUpdateLastSyncDisplay() {
+  const el = document.getElementById('cloud-last-sync');
+  if (!el) return;
+  const ts = cloudLastPullAt || cloudLastPushAt;
+  if (!ts) { el.textContent = ''; return; }
+  el.textContent = 'Dernier : ' + new Date(ts).toLocaleTimeString('fr-FR');
+}
+
+async function cloudPush() {
+  if (!cloudIsActive()) return false;
+  if (!navigator.onLine) { cloudSetStatus('offline'); return false; }
+  cloudSetStatus('syncing');
+  const payload = buildSyncPayload(''); // état complet de cet appareil
+  try {
+    const res = await fetch(cloudConfig.url, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + cloudConfig.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    cloudLastPushAt = nowIso();
+    return true;
+  } catch (e) {
+    cloudSetStatus('err', e.message.slice(0, 30));
+    return false;
+  }
+}
+
+async function cloudPull() {
+  if (!cloudIsActive()) return false;
+  if (!navigator.onLine) { cloudSetStatus('offline'); return false; }
+  cloudSetStatus('syncing');
+  try {
+    const res = await fetch(cloudConfig.url, {
+      headers: { 'Authorization': 'Bearer ' + cloudConfig.token },
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    let totalChanges = 0;
+    for (const state of (data.states || [])) {
+      if (!state || state.from === deviceId) continue; // skip notre propre état
+      const r = applySyncPayload(state);
+      totalChanges += r.produitsAjoutes + r.produitsMaj + r.produitsSupprimes
+                    + r.ventesAjoutees;
+    }
+    cloudLastPullAt = nowIso();
+    if (totalChanges > 0) {
+      save();
+      renderCaisse(); renderStock(); renderHisto(); renderSync();
+      updateHeader();
+      showToast(`☁ Sync cloud : ${totalChanges} changement${totalChanges>1?'s':''}`, 'info');
+    }
+    cloudSetStatus('ok');
+    cloudUpdateLastSyncDisplay();
+    return true;
+  } catch (e) {
+    cloudSetStatus('err', e.message.slice(0, 30));
+    return false;
+  }
+}
+
+async function cloudSyncRoundTrip() {
+  if (!cloudIsActive()) {
+    showToast('Sync cloud non configurée', 'error');
+    return;
+  }
+  const pushed = await cloudPush();
+  const pulled = await cloudPull();
+  if (pushed || pulled) cloudUpdateLastSyncDisplay();
+}
+
+function startCloudPolling() {
+  if (cloudPollInterval) { clearInterval(cloudPollInterval); cloudPollInterval = null; }
+  if (!cloudIsActive()) { cloudSetStatus('off'); return; }
+  cloudSetStatus('idle');
+  // Premier round-trip immédiat (non bloquant)
+  cloudSyncRoundTrip();
+  cloudPollInterval = setInterval(cloudSyncRoundTrip, CLOUD_POLL_MS);
+}
+
+function ouvrirCloudConfig() {
+  const cfg = cloudConfig || { url: '', token: '', enabled: false };
+  // Modal custom (genModal ne supporte pas 2 inputs simultanés)
+  const titre = "Configurer la sync cloud";
+  // On utilise genModal en mode message + on injecte les 2 inputs et la checkbox
+  // dans une 2e étape via le DOM. Plus simple : modal HTML inline custom.
+  let modal = document.getElementById('modal-cloud-config');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-cloud-config';
+    modal.className = 'hidden fixed inset-0 modal-bg z-50 flex items-end sm:items-center justify-center';
+    modal.innerHTML = `
+      <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:w-96 p-4 max-h-[95vh] overflow-y-auto">
+        <h3 class="text-lg font-bold mb-2">${titre}</h3>
+        <p class="text-xs text-slate-600 mb-3">Renseigne l'URL de l'endpoint Cloudflare Pages et le token partagé. Voir <code>docs/DEPLOIEMENT.md</code> pour la mise en place côté Cloudflare.</p>
+        <label class="block text-xs font-semibold mb-1">URL de l'endpoint</label>
+        <input id="cloud-cfg-url" type="text" placeholder="https://caisse.pages.dev/api/sync"
+               class="w-full border rounded-lg px-3 py-2 mb-3 text-sm">
+        <label class="block text-xs font-semibold mb-1">Token (SYNC_TOKEN)</label>
+        <input id="cloud-cfg-token" type="text" placeholder="Token long aléatoire"
+               class="w-full border rounded-lg px-3 py-2 mb-3 text-sm font-mono">
+        <label class="flex items-center gap-2 mb-3 text-sm">
+          <input id="cloud-cfg-enabled" type="checkbox" class="w-4 h-4">
+          <span>Activer la sync auto (poll toutes les ${CLOUD_POLL_MS/1000} s)</span>
+        </label>
+        <div class="flex gap-2">
+          <button id="cloud-cfg-cancel" class="flex-1 bg-slate-300 py-3 rounded-lg font-semibold">Annuler</button>
+          <button id="cloud-cfg-test"   class="flex-1 bg-amber-600 text-white py-3 rounded-lg font-semibold">Tester</button>
+          <button id="cloud-cfg-save"   class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold">Enregistrer</button>
+        </div>
+        <div id="cloud-cfg-result" class="mt-2 text-xs"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('cloud-cfg-cancel').addEventListener('click', () => modal.classList.add('hidden'));
+    document.getElementById('cloud-cfg-save').addEventListener('click', () => {
+      const url = document.getElementById('cloud-cfg-url').value.trim();
+      const token = document.getElementById('cloud-cfg-token').value.trim();
+      const enabled = document.getElementById('cloud-cfg-enabled').checked;
+      if (enabled && (!url || !token)) {
+        document.getElementById('cloud-cfg-result').innerHTML = '<span class="text-red-600">URL et token requis pour activer.</span>';
+        return;
+      }
+      cloudConfigSave({ url, token, enabled });
+      modal.classList.add('hidden');
+      startCloudPolling();
+      showToast(enabled ? '☁ Sync cloud activée' : '☁ Sync cloud désactivée');
+    });
+    document.getElementById('cloud-cfg-test').addEventListener('click', async () => {
+      const url = document.getElementById('cloud-cfg-url').value.trim();
+      const token = document.getElementById('cloud-cfg-token').value.trim();
+      const result = document.getElementById('cloud-cfg-result');
+      if (!url || !token) { result.innerHTML = '<span class="text-red-600">URL et token requis.</span>'; return; }
+      result.innerHTML = '<span class="text-amber-600">Test en cours…</span>';
+      try {
+        const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+        if (res.ok) {
+          const d = await res.json();
+          result.innerHTML = `<span class="text-emerald-600">✓ Connexion OK (${d.count || 0} appareils enregistrés)</span>`;
+        } else if (res.status === 401) {
+          result.innerHTML = '<span class="text-red-600">✗ Token invalide (HTTP 401)</span>';
+        } else {
+          result.innerHTML = `<span class="text-red-600">✗ HTTP ${res.status}</span>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<span class="text-red-600">✗ Erreur réseau : ${e.message}</span>`;
+      }
+    });
+  }
+  document.getElementById('cloud-cfg-url').value = cfg.url || '';
+  document.getElementById('cloud-cfg-token').value = cfg.token || '';
+  document.getElementById('cloud-cfg-enabled').checked = !!cfg.enabled;
+  document.getElementById('cloud-cfg-result').innerHTML = '';
+  modal.classList.remove('hidden');
+}
+
+// ============================
 // EVENT DELEGATION (remplace tous les onclick inline)
 // ============================
 document.addEventListener('click', (e) => {
@@ -1644,6 +1860,17 @@ document.getElementById('btn-qr-next').addEventListener('click', () => {
   if (qrShowState && qrShowState.current < qrShowState.segments.length - 1) {
     qrShowState.current++; renderQRSegment();
   }
+});
+
+// Cloud sync (Cloudflare KV)
+document.getElementById('btn-cloud-config').addEventListener('click', ouvrirCloudConfig);
+document.getElementById('btn-cloud-sync-now').addEventListener('click', cloudSyncRoundTrip);
+cloudConfigLoad();
+startCloudPolling();
+window.addEventListener('online', () => { if (cloudIsActive()) cloudSyncRoundTrip(); });
+window.addEventListener('offline', () => { if (cloudIsActive()) cloudSetStatus('offline'); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && cloudIsActive()) cloudSyncRoundTrip();
 });
 
 // Modal produit

@@ -10,8 +10,11 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>Caisse Stand v3.0</title>
+<title>Caisse Stand v3.1</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="./vendor/qrcode.min.js"></script>
+<script src="./vendor/jsQR.min.js"></script>
+<script src="./vendor/pako.min.js"></script>
 <style>
   body { -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
   .btn-product { transition: transform 0.05s; }
@@ -146,6 +149,35 @@
       <h3 class="font-bold text-sm text-slate-700 mb-2">📱 Ventilation par appareil</h3>
       <div id="device-breakdown" class="space-y-1 text-xs"></div>
     </div>
+
+    <!-- ============================ -->
+    <!-- SYNC RAPIDE QR CODE (P2P)    -->
+    <!-- ============================ -->
+    <div class="bg-cyan-50 border border-cyan-200 p-3 rounded-lg mb-3">
+      <h3 class="font-bold text-sm text-cyan-900 mb-1">📷 Sync rapide entre téléphones (offline)</h3>
+      <p class="text-xs text-cyan-800 mb-2">Échange direct stock + ventes via QR code, sans réseau. Idéal sur le stand.</p>
+      <div class="flex gap-2">
+        <button id="btn-qr-show" class="flex-1 bg-cyan-600 text-white py-2 rounded-lg text-sm font-semibold">📤 Afficher mon QR</button>
+        <button id="btn-qr-scan" class="flex-1 bg-cyan-700 text-white py-2 rounded-lg text-sm font-semibold">📥 Scanner un QR</button>
+      </div>
+      <div id="qr-last-sync" class="mt-2 text-xs text-cyan-700"></div>
+    </div>
+
+    <!-- ============================ -->
+    <!-- SYNC AUTO CLOUD (Cloudflare) -->
+    <!-- ============================ -->
+    <div class="bg-indigo-50 border border-indigo-200 p-3 rounded-lg mb-3">
+      <h3 class="font-bold text-sm text-indigo-900 mb-1">☁️ Sync auto cloud (en réseau)</h3>
+      <p class="text-xs text-indigo-800 mb-2">Synchronise automatiquement entre tous les téléphones quand le réseau est disponible. Optionnelle, complémentaire du QR.</p>
+      <div class="flex items-center justify-between mb-2 text-xs">
+        <span id="cloud-status" class="font-semibold">⚪ Désactivée</span>
+        <span id="cloud-last-sync" class="text-indigo-700"></span>
+      </div>
+      <div class="flex gap-2">
+        <button id="btn-cloud-config" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-semibold">⚙ Configurer</button>
+        <button id="btn-cloud-sync-now" class="flex-1 bg-indigo-700 text-white py-2 rounded-lg text-sm font-semibold">⟳ Sync maintenant</button>
+      </div>
+    </div>
     <!-- PWA-CARDS-START : retiré par scripts/build-portable.py -->
     <div id="install-card" class="hidden bg-emerald-50 border border-emerald-200 p-3 rounded-lg mb-3">
       <h3 class="font-bold text-sm text-emerald-900 mb-1">📲 Installer l'app</h3>
@@ -236,6 +268,36 @@
   </div>
 </div>
 
+<!-- MODAL QR : afficher mon QR pour qu'un autre téléphone le scanne -->
+<div id="modal-qr-show" class="hidden fixed inset-0 modal-bg z-50 flex items-end sm:items-center justify-center">
+  <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:w-96 p-4 max-h-[95vh] overflow-y-auto">
+    <h3 class="text-lg font-bold mb-1">📤 QR à scanner</h3>
+    <p class="text-xs text-slate-600 mb-3">L'autre téléphone : Sync → "Scanner un QR" puis pointer la caméra sur celui-ci.</p>
+    <div id="qr-canvas" class="bg-white border-2 border-slate-200 rounded-lg p-2 mx-auto" style="width:280px; height:280px;"></div>
+    <div id="qr-segment-info" class="hidden mt-2 text-center text-sm text-slate-700"></div>
+    <div id="qr-segment-nav" class="hidden mt-2 flex gap-2">
+      <button id="btn-qr-prev" class="flex-1 bg-slate-200 py-2 rounded-lg text-sm font-semibold">◀ Précédent</button>
+      <button id="btn-qr-next" class="flex-1 bg-slate-200 py-2 rounded-lg text-sm font-semibold">Suivant ▶</button>
+    </div>
+    <div id="qr-payload-info" class="mt-2 text-xs text-slate-500 text-center"></div>
+    <button id="btn-qr-show-close" class="mt-3 w-full bg-slate-300 py-3 rounded-lg font-semibold">Fermer</button>
+  </div>
+</div>
+
+<!-- MODAL QR : scanner avec la caméra -->
+<div id="modal-qr-scan" class="hidden fixed inset-0 modal-bg z-50 flex items-end sm:items-center justify-center">
+  <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:w-96 p-4 max-h-[95vh] overflow-y-auto">
+    <h3 class="text-lg font-bold mb-1">📥 Scanner un QR</h3>
+    <p id="qr-scan-status" class="text-xs text-slate-600 mb-2">Pointe la caméra sur le QR de l'autre téléphone…</p>
+    <div class="relative bg-black rounded-lg overflow-hidden" style="aspect-ratio:1;">
+      <video id="qr-video" autoplay muted playsinline class="absolute inset-0 w-full h-full object-cover"></video>
+      <div class="absolute inset-8 border-4 border-cyan-400 rounded-lg pointer-events-none"></div>
+    </div>
+    <div id="qr-scan-progress" class="mt-2 text-center text-sm text-slate-700"></div>
+    <button id="btn-qr-scan-cancel" class="mt-3 w-full bg-slate-300 py-3 rounded-lg font-semibold">Annuler</button>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -269,13 +331,48 @@ const ICONS_MODELE = {
 };
 
 // ============================
-// STOCK DISPO (décrément en direct panier)
+// STOCK DISPO (modèle event-sourced pour cohérence multi-appareils)
 // ============================
+// stock affiché = baseline (p.stock saisi à p.stockSetAt)
+//               − ventes du produit après stockSetAt (toutes sources confondues)
+//               − quantité dans le panier en cours
+//
+// Conséquence : quand on importe les ventes d'un autre téléphone, le stock se
+// recalcule automatiquement, sans muter p.stock. La baseline n'est jamais
+// touchée par les ventes — elle ne change qu'à un comptage manuel (édition
+// produit, boutons +/− stock, ou création).
+
+// Compte les unités vendues d'un produit depuis un timestamp donné.
+function ventesDuProduitDepuis(produitId, sinceIso) {
+  let n = 0;
+  for (const v of ventes) {
+    const ts = v.timestamp || '';
+    if (ts <= sinceIso) continue;
+    if (!Array.isArray(v.items)) continue;
+    for (const it of v.items) {
+      if (it.id === produitId) n += it.qte;
+    }
+  }
+  return n;
+}
+
 function stockDispo(produitId) {
   const p = produits.find(x => x.id === produitId);
-  if (!p) return 0;
+  if (!p || p.deletedAt) return 0;
   const dansPanier = panier.filter(i => i.id === produitId).reduce((s,i) => s + i.qte, 0);
-  return p.stock - dansPanier;
+  return stockEffectif(p) - dansPanier;
+}
+
+// Stock réel restant (baseline − ventes depuis baseline), sans déduction panier.
+// Utilisé dans l'onglet Stock pour montrer l'inventaire absolu, peu importe le panier.
+function stockEffectif(p) {
+  if (!p || p.deletedAt) return 0;
+  return p.stock - ventesDuProduitDepuis(p.id, p.stockSetAt || '');
+}
+
+// Helper : retourne tous les produits non supprimés (filtre tombstones)
+function produitsActifs() {
+  return produits.filter(p => !p.deletedAt);
 }
 
 // ============================
@@ -297,6 +394,8 @@ function initDevice() {
 // ============================
 // PERSISTANCE
 // ============================
+function nowIso() { return new Date().toISOString(); }
+
 function save() {
   try {
     localStorage.setItem('caisse_data', JSON.stringify({
@@ -316,21 +415,124 @@ function load() {
       ventes = d.ventes || [];
       fondCaisse = d.fondCaisse || 0;
       lastBackup = d.lastBackup || null;
+      migrateProduits();
     } catch(e) { initDemo(); }
   } else {
     initDemo();
   }
 }
 
+// Migration douce : ajoute les champs sync (lastModified, stockSetAt) aux produits
+// qui n'en ont pas (legacy V<3.1). On les fixe à "maintenant" : le stock courant
+// est considéré comme la nouvelle baseline, les ventes futures décompteront depuis.
+function migrateProduits() {
+  const now = nowIso();
+  let changed = false;
+  for (const p of produits) {
+    if (!p.lastModified) { p.lastModified = now; changed = true; }
+    if (!p.stockSetAt)   { p.stockSetAt = now;   changed = true; }
+  }
+  if (changed) save();
+}
+
+// ============================
+// SYNC STATE (par peer) — qui a-t-on synchronisé jusqu'à quand
+// ============================
+function syncStateAll() {
+  try { return JSON.parse(localStorage.getItem('caisse_sync_state') || '{}'); }
+  catch(e) { return {}; }
+}
+function syncStateGet(peerId) {
+  return syncStateAll()[peerId] || null;
+}
+function syncStateSet(peerId, isoTs) {
+  const all = syncStateAll();
+  all[peerId] = isoTs;
+  try { localStorage.setItem('caisse_sync_state', JSON.stringify(all)); }
+  catch(e) {}
+}
+
+// Construit un payload de sync (delta depuis sinceTs, ou complet si null).
+// Format pivot indépendant du transport (QR, Cloud, JSON…).
+function buildSyncPayload(sinceTs) {
+  const cutoff = sinceTs || '';
+  return {
+    v: 1,                             // version du format
+    from: deviceId,
+    fromLabel: deviceLabel,
+    at: nowIso(),
+    since: cutoff,
+    produits: produits.filter(p => (p.lastModified || '') > cutoff),
+    ventes: ventes.filter(v => (v.timestamp || '') > cutoff),
+  };
+}
+
+// Applique un payload reçu. Stratégie :
+//   - produits : last-write-wins par lastModified (et propage deletedAt)
+//   - ventes : additif avec dédup (réutilise venteDedupeKey)
+// Retourne un rapport { produitsAjoutes, produitsMaj, produitsSupprimes,
+//                       ventesAjoutees, ventesIgnorees, invalides }
+function applySyncPayload(payload) {
+  const report = { produitsAjoutes: 0, produitsMaj: 0, produitsSupprimes: 0,
+                   ventesAjoutees: 0, ventesIgnorees: 0, invalides: 0 };
+  if (!payload || payload.v !== 1) return report;
+
+  // Merge produits (last-write-wins par lastModified)
+  if (Array.isArray(payload.produits)) {
+    for (const remote of payload.produits) {
+      if (!remote || typeof remote.id !== 'number' || !remote.lastModified) {
+        report.invalides++; continue;
+      }
+      const local = produits.find(p => p.id === remote.id);
+      if (!local) {
+        produits.push({ ...remote });
+        if (remote.deletedAt) report.produitsSupprimes++;
+        else report.produitsAjoutes++;
+      } else if ((remote.lastModified || '') > (local.lastModified || '')) {
+        const wasDeletedLocal = !!local.deletedAt;
+        Object.assign(local, remote);
+        if (remote.deletedAt && !wasDeletedLocal) report.produitsSupprimes++;
+        else report.produitsMaj++;
+      }
+    }
+  }
+
+  // Merge ventes (additif + dédup)
+  if (Array.isArray(payload.ventes)) {
+    const knownKeys = new Map();
+    ventes.forEach(v => knownKeys.set(venteDedupeKey(v), v));
+    for (const v of payload.ventes) {
+      if (!venteEstValide(v)) { report.invalides++; continue; }
+      const k = venteDedupeKey(v);
+      if (!knownKeys.has(k)) {
+        ventes.push(v);
+        knownKeys.set(k, v);
+        report.ventesAjoutees++;
+      } else {
+        report.ventesIgnorees++;
+      }
+    }
+    // Tri chronologique post-merge
+    ventes.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  }
+
+  if (payload.from) syncStateSet(payload.from, payload.at || nowIso());
+  return report;
+}
+
 function initDemo() {
   produits = [];
   let id = 1;
+  const now = nowIso();
   const demoModeles = ["Loup", "Tiki", "Lion"];
   ["T-Shirt", "Pull", "Sweat"].forEach(cat => {
     const prix = cat === "T-Shirt" ? 20 : cat === "Pull" ? 35 : 45;
     demoModeles.forEach(modele => {
       ["M", "L", "XL"].forEach(taille => {
-        produits.push({ id: id++, categorie: cat, modele, taille, prix, stock: 5 });
+        produits.push({
+          id: id++, categorie: cat, modele, taille, prix, stock: 5,
+          lastModified: now, stockSetAt: now
+        });
       });
     });
   });
@@ -449,12 +651,13 @@ function renderCaisse() {
   const bc1 = document.getElementById('bc-arrow1');
   const bcStep1 = document.getElementById('bc-step1');
 
+  const actifs = produitsActifs();
   if (currentLevel === 0) {
     bc1.classList.add('hidden');
     bcStep1.classList.add('hidden');
-    const cats = [...new Set(produits.map(p => p.categorie))];
+    const cats = [...new Set(actifs.map(p => p.categorie))];
     grid.innerHTML = cats.map(cat => {
-      const total = produits.filter(p => p.categorie === cat).reduce((s,p) => s + stockDispo(p.id), 0);
+      const total = actifs.filter(p => p.categorie === cat).reduce((s,p) => s + stockDispo(p.id), 0);
       return `
         <button data-action="selcat" data-cat="${cat}" class="btn-product ${COULEURS_CAT[cat] || 'bg-slate-600'} text-white p-4 rounded-lg shadow col-span-3 flex justify-between items-center">
           <span class="text-lg font-bold">${cat}</span>
@@ -466,9 +669,9 @@ function renderCaisse() {
     bc1.classList.add('hidden');
     bcStep1.classList.remove('hidden');
     bcStep1.textContent = selCat;
-    const modeles = [...new Set(produits.filter(p => p.categorie === selCat).map(p => p.modele))];
+    const modeles = [...new Set(actifs.filter(p => p.categorie === selCat).map(p => p.modele))];
     grid.innerHTML = modeles.map(m => {
-      const total = produits.filter(p => p.categorie === selCat && p.modele === m).reduce((s,p) => s + stockDispo(p.id), 0);
+      const total = actifs.filter(p => p.categorie === selCat && p.modele === m).reduce((s,p) => s + stockDispo(p.id), 0);
       const dispo = total > 0 ? '' : 'opacity-40';
       return `
         <button data-action="selmodele" data-modele="${encodeURIComponent(m)}" class="btn-product ${COULEURS_CAT[selCat]} text-white p-2 rounded-lg shadow ${dispo}">
@@ -481,7 +684,7 @@ function renderCaisse() {
   } else if (currentLevel === 2) {
     bc1.classList.remove('hidden');
     bcStep1.innerHTML = `<button data-action="backcat" class="text-blue-700 underline">${selCat}</button> › ${selModele}`;
-    const tailles = produits.filter(p => p.categorie === selCat && p.modele === selModele);
+    const tailles = actifs.filter(p => p.categorie === selCat && p.modele === selModele);
     grid.innerHTML = tailles.map(p => {
       const dispo = stockDispo(p.id);
       const cls = dispo > 0 ? '' : 'opacity-40 pointer-events-none';
@@ -517,7 +720,7 @@ function togglePanier() {
 
 function ajouterAuPanier(id) {
   const p = produits.find(x => x.id === id);
-  if (!p) return;
+  if (!p || p.deletedAt) return;
   if (stockDispo(id) <= 0) {
     showToast('Stock épuisé', 'error');
     return;
@@ -580,10 +783,10 @@ function viderPanier() {
 }
 
 function finaliserVente(mode, total) {
-  panier.forEach(i => {
-    const p = produits.find(x => x.id === i.id);
-    if (p) p.stock -= i.qte;
-  });
+  // Note (V3.1+) : on ne décrémente PLUS p.stock ici. Le stock affiché est
+  // calculé dynamiquement par stockDispo() à partir de la baseline + ventes.
+  // Ça permet la cohérence multi-appareils : une vente importée d'un autre
+  // téléphone décrémente automatiquement le stock affiché chez tous.
   const now = new Date();
   ventes.push({
     id: `${deviceId}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
@@ -640,10 +843,8 @@ function annulerDerniere() {
     message: `Annuler la vente de ${v.total} € (${v.heure}) ?`,
     okLabel: 'Oui, annuler',
     onOk: () => {
-      v.items.forEach(i => {
-        const p = produits.find(x => x.id === i.id);
-        if (p) p.stock += i.qte;
-      });
+      // V3.1+ : on ne ré-incrémente plus p.stock manuellement. Retirer la
+      // vente du tableau suffit : stockDispo() la déduira d'office.
       ventes = ventes.filter(x => x.id !== v.id);
       save();
       renderCaisse();
@@ -665,11 +866,12 @@ function updateHeader() {
 // STOCK
 // ============================
 function renderStock() {
-  const cats = [...new Set(produits.map(p => p.categorie))];
+  const actifs = produitsActifs();
+  const cats = [...new Set(actifs.map(p => p.categorie))];
   let html = '';
   cats.forEach(cat => {
     html += `<h3 class="font-bold text-sm text-slate-700 mt-3 mb-1">${cat}</h3>`;
-    const items = produits.filter(p => p.categorie === cat);
+    const items = actifs.filter(p => p.categorie === cat);
     html += items.map(p => `
       <div data-action="editprod" data-id="${p.id}" class="flex items-center gap-2 bg-slate-50 p-2 rounded-lg active:bg-slate-200 cursor-pointer">
         <div class="${COULEURS_CAT[cat] || 'bg-slate-600'} w-2 h-10 rounded"></div>
@@ -679,7 +881,7 @@ function renderStock() {
           <div class="text-xs text-slate-500">${p.prix} €</div>
         </div>
         <button data-action="stockminus" data-id="${p.id}" class="bg-slate-200 w-8 h-8 rounded font-bold">−</button>
-        <span class="w-8 text-center font-bold ${p.stock === 0 ? 'text-red-600' : ''}">${p.stock}</span>
+        <span class="w-8 text-center font-bold ${stockEffectif(p) === 0 ? 'text-red-600' : ''}">${stockEffectif(p)}</span>
         <button data-action="stockplus" data-id="${p.id}" class="bg-slate-200 w-8 h-8 rounded font-bold">+</button>
       </div>
     `).join('');
@@ -689,8 +891,15 @@ function renderStock() {
 
 function modifStock(id, delta) {
   const p = produits.find(x => x.id === id);
-  if (!p) return;
-  p.stock = Math.max(0, p.stock + delta);
+  if (!p || p.deletedAt) return;
+  // Récompute le stock courant (baseline − ventes depuis baseline) puis
+  // applique le delta. Ça reset la baseline à maintenant : les ventes
+  // futures décompteront depuis ce nouveau point de référence.
+  const now = nowIso();
+  const courant = p.stock - ventesDuProduitDepuis(id, p.stockSetAt || '');
+  p.stock = Math.max(0, courant + delta);
+  p.stockSetAt = now;
+  p.lastModified = now;
   save();
   renderStock();
   renderCaisse();
@@ -713,7 +922,7 @@ function ouvrirAjoutProduit() {
 
 function ouvrirEditProduit(id) {
   const p = produits.find(x => x.id === id);
-  if (!p) return;
+  if (!p || p.deletedAt) return;
   editingId = id;
   document.getElementById('modal-titre').textContent = "Éditer le produit";
   document.getElementById('btn-supprimer').classList.remove('hidden');
@@ -721,7 +930,9 @@ function ouvrirEditProduit(id) {
   document.getElementById('inp-modele').value = p.modele;
   document.getElementById('inp-taille').value = p.taille;
   document.getElementById('inp-prix').value = p.prix;
-  document.getElementById('inp-stock').value = p.stock;
+  // Affiche le stock effectif actuel (baseline − ventes), pas la baseline brute,
+  // pour que l'utilisateur voit "ce qu'il a réellement" avant d'ajuster.
+  document.getElementById('inp-stock').value = stockEffectif(p);
   document.getElementById('modal-produit').classList.remove('hidden');
 }
 
@@ -737,14 +948,22 @@ function sauverProduit() {
   const prix = parseFloat(document.getElementById('inp-prix').value);
   const stock = parseInt(document.getElementById('inp-stock').value);
   if (isNaN(prix) || isNaN(stock)) { showToast("Prix et stock requis", 'error'); return; }
+  const now = nowIso();
   if (editingId) {
     const p = produits.find(x => x.id === editingId);
     p.categorie = cat; p.modele = modele; p.taille = taille;
     p.prix = prix; p.stock = stock;
+    p.lastModified = now;
+    // À la sauvegarde manuelle, on considère que l'utilisateur déclare
+    // "j'ai N en stock à cet instant" → reset baseline systématique.
+    p.stockSetAt = now;
     showToast('Produit modifié');
   } else {
     const newId = produits.length ? Math.max(...produits.map(p => p.id)) + 1 : 1;
-    produits.push({ id: newId, categorie: cat, modele, taille, prix, stock });
+    produits.push({
+      id: newId, categorie: cat, modele, taille, prix, stock,
+      lastModified: now, stockSetAt: now
+    });
     showToast('Produit ajouté');
   }
   save();
@@ -761,7 +980,14 @@ function supprimerProduit() {
     message: 'Cette action est irréversible.',
     okLabel: 'Supprimer',
     onOk: () => {
-      produits = produits.filter(p => p.id !== id);
+      // Tombstone : on garde l'objet pour propager la suppression aux autres
+      // appareils via sync. Le rendering filtre les produits avec deletedAt.
+      const p = produits.find(x => x.id === id);
+      if (p) {
+        const now = nowIso();
+        p.deletedAt = now;
+        p.lastModified = now;
+      }
       save();
       fermerGenModal();
       fermerModal();
@@ -1082,6 +1308,7 @@ function renderSync() {
         <div class="text-slate-600">${d.count} ventes · 💵 ${d.cash} € · 💳 ${d.cb} € · <strong>Total ${d.cash + d.cb} €</strong></div>
       </div>
     `).join('');
+  renderQRLastSync();
 }
 
 // Autorise lettres (accents inclus), chiffres, espace, tiret, underscore.
@@ -1096,7 +1323,7 @@ function renommerAppareil() {
     inputType: 'text',
     inputValue: deviceLabel,
     maxLength: 30,
-    placeholder: 'Ex : Tel Stéf, iPhone Marché, Tablette-Caisse',
+    placeholder: 'Ex : Terminal 1, iPhone Marché, Tablette-Caisse',
     okLabel: 'Enregistrer',
     onOk: () => {
       const v = document.getElementById('gen-input').value.trim();
@@ -1114,6 +1341,459 @@ function renommerAppareil() {
       showToast('Appareil renommé');
     }
   });
+}
+
+// ============================
+// SYNC RAPIDE QR (peer-to-peer offline)
+// ============================
+// Format des segments QR : "CS1|<id6>|<idx>/<total>|<chunk_b64>"
+// - CS1 = magic + version protocole
+// - id6 = identifiant aléatoire 6 chars partagé par tous les segments d'un même payload
+// - idx/total = numérotation 1-based
+// - chunk_b64 = morceau base64 d'un payload deflaté
+
+const QR_MAGIC = 'CS1';
+const QR_CHUNK_BYTES = 1800; // bytes raw par chunk → ~2400 chars b64, OK pour QR v40 byte mode
+
+let qrShowState = null; // { segments: [string], current: 0, qrInstance, payloadInfo }
+let qrScanState = null; // { stream, rafId, video, canvas, ctx, detector, currentBatchId, segments: Map<idx,chunk>, total }
+
+function compressPayloadToB64(obj) {
+  // JSON → utf8 → deflate → base64
+  const json = JSON.stringify(obj);
+  const u8 = pako.deflate(json);
+  // Conversion Uint8Array → base64 (chunked pour éviter call stack)
+  let bin = '';
+  for (let i = 0; i < u8.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
+function decompressPayloadFromB64(b64) {
+  const bin = atob(b64);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  const json = pako.inflate(u8, { to: 'string' });
+  return JSON.parse(json);
+}
+
+function chunkString(str, size) {
+  const out = [];
+  for (let i = 0; i < str.length; i += size) out.push(str.slice(i, i + size));
+  return out;
+}
+
+function ouvrirQRShow() {
+  // Construit le delta payload depuis la dernière sync (avec n'importe quel peer)
+  // Pour simplifier : on envoie tout ce qui a été modifié depuis la PLUS ANCIENNE
+  // dernière sync. Si jamais sync, on envoie tout (cutoff = '').
+  const allStates = syncStateAll();
+  const stamps = Object.values(allStates);
+  const cutoff = stamps.length === 0 ? '' : stamps.sort()[0]; // le plus ancien
+  const payload = buildSyncPayload(cutoff);
+
+  let b64;
+  try { b64 = compressPayloadToB64(payload); }
+  catch (e) { showToast('Erreur compression : ' + e.message, 'error'); return; }
+
+  // Découpage en segments
+  const batchId = Math.random().toString(36).slice(2, 8);
+  const chunks = chunkString(b64, Math.floor(QR_CHUNK_BYTES * 4 / 3));
+  const segments = chunks.map((c, i) => `${QR_MAGIC}|${batchId}|${i+1}/${chunks.length}|${c}`);
+
+  qrShowState = {
+    segments,
+    current: 0,
+    qrInstance: null,
+    payloadInfo: `${payload.produits.length} produits · ${payload.ventes.length} ventes`
+  };
+
+  document.getElementById('modal-qr-show').classList.remove('hidden');
+  renderQRSegment();
+
+  document.getElementById('qr-payload-info').textContent =
+    `Delta depuis ${cutoff || 'le début'} : ${qrShowState.payloadInfo}`;
+
+  if (segments.length > 1) {
+    document.getElementById('qr-segment-info').classList.remove('hidden');
+    document.getElementById('qr-segment-nav').classList.remove('hidden');
+  } else {
+    document.getElementById('qr-segment-info').classList.add('hidden');
+    document.getElementById('qr-segment-nav').classList.add('hidden');
+  }
+}
+
+function renderQRSegment() {
+  if (!qrShowState) return;
+  const el = document.getElementById('qr-canvas');
+  el.innerHTML = '';
+  qrShowState.qrInstance = new QRCode(el, {
+    text: qrShowState.segments[qrShowState.current],
+    width: 280,
+    height: 280,
+    correctLevel: QRCode.CorrectLevel.L
+  });
+  document.getElementById('qr-segment-info').textContent =
+    `Segment ${qrShowState.current + 1} / ${qrShowState.segments.length}`;
+}
+
+function fermerQRShow() {
+  document.getElementById('modal-qr-show').classList.add('hidden');
+  qrShowState = null;
+}
+
+async function ouvrirQRScan() {
+  qrScanState = {
+    stream: null, rafId: null, video: null, canvas: null, ctx: null,
+    detector: null, currentBatchId: null, segments: new Map(), total: 0
+  };
+  document.getElementById('modal-qr-scan').classList.remove('hidden');
+  document.getElementById('qr-scan-status').textContent = 'Pointe la caméra sur le QR de l\'autre téléphone…';
+  document.getElementById('qr-scan-progress').textContent = '';
+
+  try {
+    qrScanState.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }
+    });
+  } catch (e) {
+    showToast('Caméra inaccessible : ' + e.message, 'error');
+    fermerQRScan();
+    return;
+  }
+
+  qrScanState.video = document.getElementById('qr-video');
+  qrScanState.video.srcObject = qrScanState.stream;
+  qrScanState.canvas = document.createElement('canvas');
+  qrScanState.ctx = qrScanState.canvas.getContext('2d', { willReadFrequently: true });
+
+  // Préfère BarcodeDetector natif si dispo (iOS 17+, Chrome récent)
+  if (window.BarcodeDetector) {
+    try { qrScanState.detector = new BarcodeDetector({ formats: ['qr_code'] }); }
+    catch(e) { qrScanState.detector = null; }
+  }
+
+  qrScanState.video.onloadedmetadata = () => {
+    qrScanLoop();
+  };
+}
+
+async function qrScanLoop() {
+  if (!qrScanState || !qrScanState.video) return;
+  const v = qrScanState.video;
+  if (v.readyState >= 2 && v.videoWidth > 0) {
+    qrScanState.canvas.width = v.videoWidth;
+    qrScanState.canvas.height = v.videoHeight;
+    qrScanState.ctx.drawImage(v, 0, 0);
+
+    let detected = null;
+    if (qrScanState.detector) {
+      try {
+        const results = await qrScanState.detector.detect(qrScanState.canvas);
+        if (results && results.length) detected = results[0].rawValue;
+      } catch(e) {}
+    }
+    if (!detected && typeof jsQR !== 'undefined') {
+      const img = qrScanState.ctx.getImageData(0, 0, qrScanState.canvas.width, qrScanState.canvas.height);
+      const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+      if (code) detected = code.data;
+    }
+
+    if (detected) {
+      handleQRDetected(detected);
+    }
+  }
+  qrScanState.rafId = requestAnimationFrame(qrScanLoop);
+}
+
+function handleQRDetected(text) {
+  // Format attendu : CS1|batchId|idx/total|chunk
+  const parts = text.split('|');
+  if (parts.length !== 4 || parts[0] !== QR_MAGIC) {
+    document.getElementById('qr-scan-status').textContent =
+      '⚠ QR non reconnu (format incompatible)';
+    return;
+  }
+  const [, batchId, idxTotal, chunk] = parts;
+  const [idxStr, totalStr] = idxTotal.split('/');
+  const idx = parseInt(idxStr), total = parseInt(totalStr);
+  if (!batchId || !idx || !total) return;
+
+  // Nouveau batch ?
+  if (qrScanState.currentBatchId !== batchId) {
+    qrScanState.currentBatchId = batchId;
+    qrScanState.segments = new Map();
+    qrScanState.total = total;
+  }
+
+  if (qrScanState.segments.has(idx)) {
+    document.getElementById('qr-scan-progress').textContent =
+      `Segment ${idx} déjà reçu (${qrScanState.segments.size}/${total})`;
+    return;
+  }
+  qrScanState.segments.set(idx, chunk);
+  document.getElementById('qr-scan-progress').textContent =
+    `Reçu ${qrScanState.segments.size}/${total}`;
+
+  if (qrScanState.segments.size === total) {
+    // Assemblage + décompression + apply
+    let assembled = '';
+    for (let i = 1; i <= total; i++) {
+      assembled += qrScanState.segments.get(i);
+    }
+    let payload;
+    try { payload = decompressPayloadFromB64(assembled); }
+    catch (e) {
+      showToast('QR corrompu : ' + e.message, 'error');
+      fermerQRScan();
+      return;
+    }
+    appliquerPayloadRecu(payload);
+    fermerQRScan();
+  }
+}
+
+function appliquerPayloadRecu(payload) {
+  const r = applySyncPayload(payload);
+  save();
+  renderCaisse();
+  renderStock();
+  renderHisto();
+  renderSync();
+  updateHeader();
+  const parts = [];
+  if (r.produitsAjoutes) parts.push(`${r.produitsAjoutes} prod. ajoutés`);
+  if (r.produitsMaj) parts.push(`${r.produitsMaj} prod. MAJ`);
+  if (r.produitsSupprimes) parts.push(`${r.produitsSupprimes} prod. supprimés`);
+  if (r.ventesAjoutees) parts.push(`${r.ventesAjoutees} ventes`);
+  if (r.ventesIgnorees) parts.push(`${r.ventesIgnorees} doublons`);
+  if (r.invalides) parts.push(`⚠ ${r.invalides} invalides`);
+  showToast('✓ Sync ' + (payload.fromLabel || payload.from || '?') + ' : ' + (parts.join(' · ') || 'rien à faire'));
+}
+
+function fermerQRScan() {
+  if (qrScanState) {
+    if (qrScanState.rafId) cancelAnimationFrame(qrScanState.rafId);
+    if (qrScanState.stream) qrScanState.stream.getTracks().forEach(t => t.stop());
+  }
+  document.getElementById('modal-qr-scan').classList.add('hidden');
+  qrScanState = null;
+}
+
+function renderQRLastSync() {
+  const all = syncStateAll();
+  const entries = Object.entries(all);
+  const el = document.getElementById('qr-last-sync');
+  if (!el) return;
+  if (entries.length === 0) {
+    el.textContent = 'Jamais synchronisé avec un autre appareil.';
+  } else {
+    const lines = entries.map(([id, ts]) => {
+      const d = new Date(ts);
+      return `· ${id.slice(0,12)} : ${d.toLocaleString('fr-FR')}`;
+    });
+    el.innerHTML = 'Dernières syncs :<br>' + lines.join('<br>');
+  }
+}
+
+// ============================
+// SYNC AUTO CLOUD (Cloudflare KV via Pages Functions)
+// ============================
+// Config stockée dans localStorage : { url, token, enabled }
+// - url : endpoint Pages Functions, ex 'https://caisse.pages.dev/api/sync'
+// - token : SYNC_TOKEN défini côté Cloudflare Pages (Settings → Env vars)
+// - enabled : booléen, peut être désactivé temporairement sans perdre la conf
+
+let cloudConfig = null;
+let cloudPollInterval = null;
+let cloudLastPushAt = null;
+let cloudLastPullAt = null;
+const CLOUD_POLL_MS = 30000; // 30 secondes
+
+function cloudConfigLoad() {
+  try { cloudConfig = JSON.parse(localStorage.getItem('caisse_cloud_config') || 'null'); }
+  catch(e) { cloudConfig = null; }
+}
+
+function cloudConfigSave(cfg) {
+  cloudConfig = cfg;
+  if (cfg) localStorage.setItem('caisse_cloud_config', JSON.stringify(cfg));
+  else localStorage.removeItem('caisse_cloud_config');
+}
+
+function cloudIsActive() {
+  return cloudConfig && cloudConfig.enabled && cloudConfig.url && cloudConfig.token;
+}
+
+function cloudSetStatus(state, detail) {
+  // state : 'off' | 'idle' | 'syncing' | 'ok' | 'err' | 'offline'
+  const el = document.getElementById('cloud-status');
+  if (!el) return;
+  const labels = {
+    off:     '⚪ Désactivée',
+    idle:    '🟡 En attente',
+    syncing: '🔵 Sync en cours…',
+    ok:      '🟢 À jour',
+    err:     '🔴 Erreur',
+    offline: '🔌 Hors ligne',
+  };
+  el.textContent = labels[state] + (detail ? ' · ' + detail : '');
+}
+
+function cloudUpdateLastSyncDisplay() {
+  const el = document.getElementById('cloud-last-sync');
+  if (!el) return;
+  const ts = cloudLastPullAt || cloudLastPushAt;
+  if (!ts) { el.textContent = ''; return; }
+  el.textContent = 'Dernier : ' + new Date(ts).toLocaleTimeString('fr-FR');
+}
+
+async function cloudPush() {
+  if (!cloudIsActive()) return false;
+  if (!navigator.onLine) { cloudSetStatus('offline'); return false; }
+  cloudSetStatus('syncing');
+  const payload = buildSyncPayload(''); // état complet de cet appareil
+  try {
+    const res = await fetch(cloudConfig.url, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + cloudConfig.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    cloudLastPushAt = nowIso();
+    return true;
+  } catch (e) {
+    cloudSetStatus('err', e.message.slice(0, 30));
+    return false;
+  }
+}
+
+async function cloudPull() {
+  if (!cloudIsActive()) return false;
+  if (!navigator.onLine) { cloudSetStatus('offline'); return false; }
+  cloudSetStatus('syncing');
+  try {
+    const res = await fetch(cloudConfig.url, {
+      headers: { 'Authorization': 'Bearer ' + cloudConfig.token },
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    let totalChanges = 0;
+    for (const state of (data.states || [])) {
+      if (!state || state.from === deviceId) continue; // skip notre propre état
+      const r = applySyncPayload(state);
+      totalChanges += r.produitsAjoutes + r.produitsMaj + r.produitsSupprimes
+                    + r.ventesAjoutees;
+    }
+    cloudLastPullAt = nowIso();
+    if (totalChanges > 0) {
+      save();
+      renderCaisse(); renderStock(); renderHisto(); renderSync();
+      updateHeader();
+      showToast(`☁ Sync cloud : ${totalChanges} changement${totalChanges>1?'s':''}`, 'info');
+    }
+    cloudSetStatus('ok');
+    cloudUpdateLastSyncDisplay();
+    return true;
+  } catch (e) {
+    cloudSetStatus('err', e.message.slice(0, 30));
+    return false;
+  }
+}
+
+async function cloudSyncRoundTrip() {
+  if (!cloudIsActive()) {
+    showToast('Sync cloud non configurée', 'error');
+    return;
+  }
+  const pushed = await cloudPush();
+  const pulled = await cloudPull();
+  if (pushed || pulled) cloudUpdateLastSyncDisplay();
+}
+
+function startCloudPolling() {
+  if (cloudPollInterval) { clearInterval(cloudPollInterval); cloudPollInterval = null; }
+  if (!cloudIsActive()) { cloudSetStatus('off'); return; }
+  cloudSetStatus('idle');
+  // Premier round-trip immédiat (non bloquant)
+  cloudSyncRoundTrip();
+  cloudPollInterval = setInterval(cloudSyncRoundTrip, CLOUD_POLL_MS);
+}
+
+function ouvrirCloudConfig() {
+  const cfg = cloudConfig || { url: '', token: '', enabled: false };
+  // Modal custom (genModal ne supporte pas 2 inputs simultanés)
+  const titre = "Configurer la sync cloud";
+  // On utilise genModal en mode message + on injecte les 2 inputs et la checkbox
+  // dans une 2e étape via le DOM. Plus simple : modal HTML inline custom.
+  let modal = document.getElementById('modal-cloud-config');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-cloud-config';
+    modal.className = 'hidden fixed inset-0 modal-bg z-50 flex items-end sm:items-center justify-center';
+    modal.innerHTML = `
+      <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:w-96 p-4 max-h-[95vh] overflow-y-auto">
+        <h3 class="text-lg font-bold mb-2">${titre}</h3>
+        <p class="text-xs text-slate-600 mb-3">Renseigne l'URL de l'endpoint Cloudflare Pages et le token partagé. Voir <code>docs/DEPLOIEMENT.md</code> pour la mise en place côté Cloudflare.</p>
+        <label class="block text-xs font-semibold mb-1">URL de l'endpoint</label>
+        <input id="cloud-cfg-url" type="text" placeholder="https://caisse.pages.dev/api/sync"
+               class="w-full border rounded-lg px-3 py-2 mb-3 text-sm">
+        <label class="block text-xs font-semibold mb-1">Token (SYNC_TOKEN)</label>
+        <input id="cloud-cfg-token" type="text" placeholder="Token long aléatoire"
+               class="w-full border rounded-lg px-3 py-2 mb-3 text-sm font-mono">
+        <label class="flex items-center gap-2 mb-3 text-sm">
+          <input id="cloud-cfg-enabled" type="checkbox" class="w-4 h-4">
+          <span>Activer la sync auto (poll toutes les ${CLOUD_POLL_MS/1000} s)</span>
+        </label>
+        <div class="flex gap-2">
+          <button id="cloud-cfg-cancel" class="flex-1 bg-slate-300 py-3 rounded-lg font-semibold">Annuler</button>
+          <button id="cloud-cfg-test"   class="flex-1 bg-amber-600 text-white py-3 rounded-lg font-semibold">Tester</button>
+          <button id="cloud-cfg-save"   class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-semibold">Enregistrer</button>
+        </div>
+        <div id="cloud-cfg-result" class="mt-2 text-xs"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('cloud-cfg-cancel').addEventListener('click', () => modal.classList.add('hidden'));
+    document.getElementById('cloud-cfg-save').addEventListener('click', () => {
+      const url = document.getElementById('cloud-cfg-url').value.trim();
+      const token = document.getElementById('cloud-cfg-token').value.trim();
+      const enabled = document.getElementById('cloud-cfg-enabled').checked;
+      if (enabled && (!url || !token)) {
+        document.getElementById('cloud-cfg-result').innerHTML = '<span class="text-red-600">URL et token requis pour activer.</span>';
+        return;
+      }
+      cloudConfigSave({ url, token, enabled });
+      modal.classList.add('hidden');
+      startCloudPolling();
+      showToast(enabled ? '☁ Sync cloud activée' : '☁ Sync cloud désactivée');
+    });
+    document.getElementById('cloud-cfg-test').addEventListener('click', async () => {
+      const url = document.getElementById('cloud-cfg-url').value.trim();
+      const token = document.getElementById('cloud-cfg-token').value.trim();
+      const result = document.getElementById('cloud-cfg-result');
+      if (!url || !token) { result.innerHTML = '<span class="text-red-600">URL et token requis.</span>'; return; }
+      result.innerHTML = '<span class="text-amber-600">Test en cours…</span>';
+      try {
+        const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+        if (res.ok) {
+          const d = await res.json();
+          result.innerHTML = `<span class="text-emerald-600">✓ Connexion OK (${d.count || 0} appareils enregistrés)</span>`;
+        } else if (res.status === 401) {
+          result.innerHTML = '<span class="text-red-600">✗ Token invalide (HTTP 401)</span>';
+        } else {
+          result.innerHTML = `<span class="text-red-600">✗ HTTP ${res.status}</span>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<span class="text-red-600">✗ Erreur réseau : ${e.message}</span>`;
+      }
+    });
+  }
+  document.getElementById('cloud-cfg-url').value = cfg.url || '';
+  document.getElementById('cloud-cfg-token').value = cfg.token || '';
+  document.getElementById('cloud-cfg-enabled').checked = !!cfg.enabled;
+  document.getElementById('cloud-cfg-result').innerHTML = '';
+  modal.classList.remove('hidden');
 }
 
 // ============================
@@ -1167,6 +1847,31 @@ document.getElementById('btn-export-json').addEventListener('click', () => expor
 document.getElementById('btn-import-json').addEventListener('click', demarrerImportFusion);
 document.getElementById('btn-restore-json').addEventListener('click', demarrerImportRestore);
 document.getElementById('btn-rename-device').addEventListener('click', renommerAppareil);
+
+// QR sync
+document.getElementById('btn-qr-show').addEventListener('click', ouvrirQRShow);
+document.getElementById('btn-qr-show-close').addEventListener('click', fermerQRShow);
+document.getElementById('btn-qr-scan').addEventListener('click', ouvrirQRScan);
+document.getElementById('btn-qr-scan-cancel').addEventListener('click', fermerQRScan);
+document.getElementById('btn-qr-prev').addEventListener('click', () => {
+  if (qrShowState && qrShowState.current > 0) { qrShowState.current--; renderQRSegment(); }
+});
+document.getElementById('btn-qr-next').addEventListener('click', () => {
+  if (qrShowState && qrShowState.current < qrShowState.segments.length - 1) {
+    qrShowState.current++; renderQRSegment();
+  }
+});
+
+// Cloud sync (Cloudflare KV)
+document.getElementById('btn-cloud-config').addEventListener('click', ouvrirCloudConfig);
+document.getElementById('btn-cloud-sync-now').addEventListener('click', cloudSyncRoundTrip);
+cloudConfigLoad();
+startCloudPolling();
+window.addEventListener('online', () => { if (cloudIsActive()) cloudSyncRoundTrip(); });
+window.addEventListener('offline', () => { if (cloudIsActive()) cloudSetStatus('offline'); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && cloudIsActive()) cloudSyncRoundTrip();
+});
 
 // Modal produit
 document.getElementById('modal-annuler').addEventListener('click', fermerModal);

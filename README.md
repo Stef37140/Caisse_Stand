@@ -4,16 +4,18 @@ PWA (Progressive Web App) de **caisse enregistreuse locale et auto-hébergée** 
 
 > Outil interne de suivi, sans certification NF525. Pas destiné à un usage commercial réglementé.
 
-## ✨ Fonctionnalités (V2.1)
+## ✨ Fonctionnalités (V3.1)
 
 - 🛒 **Encaissement rapide** en 2-3 taps — navigation 2 niveaux Catégorie → Modèle → Taille
 - 💵 **Rendu monnaie cash** calculé en temps réel
 - 💳 **Paiement CB** direct, sans friction
-- 📦 **Gestion stock** (ajout, édition, suppression, +/−) avec helper `stockDispo` (stock − panier)
+- 📦 **Gestion stock event-sourced** (ajout, édition, suppression, +/−). Le stock affiché est calculé dynamiquement à partir d'une baseline + des ventes, ce qui permet une cohérence parfaite entre plusieurs téléphones après sync.
 - 📊 **Bilan** : CA, top produits, historique, fond de caisse, comptage final avec calcul d'écart
-- 🔄 **Multi-appareils** : export/import JSON, fusion avec déduplication, ventilation par appareil
-- 📥 **Exports** : CSV (UTF-8 + BOM pour Excel) et JSON complet
-- 💾 **100 % offline** — localStorage, aucun compte, aucun serveur
+- 📷 **Sync QR P2P offline** : échange direct stock + ventes entre 2 téléphones via QR code (compression 10×, multi-segments si besoin), totalement hors-ligne
+- ☁️ **Sync auto cloud** (optionnelle) : Cloudflare Pages Functions + KV pour synchroniser automatiquement quand le réseau est dispo, gratuit (free tier largement suffisant)
+- 🔄 **Multi-appareils** : tombstones pour la suppression de produits, last-write-wins par `lastModified` pour le catalogue, dédup par ID + clé synthétique pour les ventes
+- 📥 **Exports** : CSV (UTF-8 + BOM pour Excel) et JSON complet, import + fusion multi-fichiers
+- 💾 **Offline complet** — localStorage, service worker cache-first, aucun compte
 - 📱 **Compatible iOS Safari et Android Chrome** sans adaptation
 
 ## 🚀 Démarrage rapide
@@ -98,8 +100,11 @@ Voir `docs/CHECKLIST_TESTS.md` — 25 scénarios de tests manuels à passer avan
 
 Projet personnel, usage libre. Pas de support commercial.
 
-## 👤 Auteur
+## 👤 Auteurs
 
-Stéphane Lesigne — maker, technicien métrologue, adepte du self-hosting.
+Projet personnel, développé en pair-programming avec Claude (Anthropic) :
 
-Développé en pair-programming avec Claude (Anthropic) — itérations V0 → V2.1 sur Claude.ai mobile, puis reprise Claude Code pour la V3+.
+- **V0 → V2.1** : itérations sur Claude.ai mobile
+- **V3.0+** : reprise avec Claude Code, ajout PWA installable + variante portable + correctifs UX/sync
+
+Les contributions extérieures sont les bienvenues via issues et pull requests.

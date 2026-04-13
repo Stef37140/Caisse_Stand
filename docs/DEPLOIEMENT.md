@@ -62,12 +62,14 @@ GitHub Pages ne sert pas de header `Service-Worker-Allowed`, donc le scope du SW
 
 ## Option C — Synology Web Station (self-hosted, recommandé pour le projet)
 
-C'est l'option naturelle pour ce projet vu l'écosystème (DS920+, stack Docker déjà en place). **HTTPS obligatoire pour la PWA** — Synology offre tout ce qu'il faut gratuitement via DDNS + Let's Encrypt.
+Option naturelle si tu as déjà un NAS Synology avec DSM 7+ et une stack Docker. **HTTPS obligatoire pour la PWA** — Synology offre tout ce qu'il faut gratuitement via DDNS + Let's Encrypt.
+
+> Dans les exemples ci-dessous, remplace `<votre-ddns>.synology.me` par ton propre DDNS et `<votre-user>` par ton username GitHub.
 
 ### Prérequis
 
 - Package **Web Station** installé (DSM 7+)
-- **DDNS Synology** actif (`toncompte.synology.me`) : Panneau de config → Accès externe → DDNS → Ajouter → Synology
+- **DDNS Synology** actif (`<votre-ddns>.synology.me`) : Panneau de config → Accès externe → DDNS → Ajouter → Synology
 - **Certificat Let's Encrypt** auto-renouvelé : Panneau de config → Sécurité → Certificat → Ajouter → Get a certificate from Let's Encrypt
 - Ports 80 (validation Let's Encrypt) et 443 (HTTPS) ouverts sur la box vers le NAS
 
@@ -77,11 +79,11 @@ Le plus simple : cloner le repo directement sur le NAS via SSH.
 
 ```bash
 # Connexion SSH au NAS
-ssh admin@toncompte.synology.me
+ssh admin@<votre-ddns>.synology.me
 
 # Cloner le repo dans un volume web
 cd /volume1/web/
-git clone https://github.com/Stef37140/Caisse_Stand.git caisse
+git clone https://github.com/<votre-user>/Caisse_Stand.git caisse
 
 # Pour les mises à jour ultérieures
 cd /volume1/web/caisse && git pull
@@ -104,7 +106,7 @@ Teste : `http://ip-nas:8080/` doit afficher l'app en HTTP.
 Panneau de config → Portail des applications → Reverse Proxy → Créer :
 - **Source** :
   - Protocole : `HTTPS`
-  - Nom d'hôte : `caisse.toncompte.synology.me` (ou `toncompte.synology.me` + un sous-path)
+  - Nom d'hôte : `caisse.<votre-ddns>.synology.me` (ou `<votre-ddns>.synology.me` + un sous-path)
   - Port : `443`
 - **Destination** :
   - Protocole : `HTTP`
@@ -112,7 +114,7 @@ Panneau de config → Portail des applications → Reverse Proxy → Créer :
   - Port : `8080`
 - Onglet **En-têtes personnalisés** : laisse par défaut (pas de config SW particulière nécessaire)
 
-Puis l'URL finale est : **`https://caisse.toncompte.synology.me/`**
+Puis l'URL finale est : **`https://caisse.<votre-ddns>.synology.me/`**
 
 ### Étape 4 — Partager
 
@@ -142,11 +144,101 @@ Lancer : `cd /volume1/docker/caisse && docker-compose up -d`. Puis reverse proxy
 Quand tu push une nouvelle version :
 
 ```bash
-ssh admin@toncompte.synology.me
+ssh admin@<votre-ddns>.synology.me
 cd /volume1/web/caisse && git pull
 ```
 
 Les utilisateurs recevront la mise à jour à leur prochaine ouverture de l'app (le service worker détectera la nouvelle version et affichera la bannière "Nouvelle version disponible").
+
+---
+
+## ☁️ Sync auto cloud — Cloudflare Pages Functions + KV (gratuit)
+
+Pour activer la synchronisation automatique entre plusieurs téléphones via le
+cloud (en complément de la sync QR offline), il faut quelques étapes côté
+Cloudflare. Tout reste **gratuit** et l'app continue de fonctionner sans cette
+config (mode QR seul).
+
+### 1. Créer un namespace KV
+
+1. Dashboard Cloudflare → **Workers & Pages** → onglet **KV** (sidebar)
+2. **Create namespace** → nom : `caisse-sync` (ou ce que tu veux)
+3. Note le **namespace ID** (sera utile en cas de doute, mais pas obligatoire)
+
+### 2. Binder le KV à ton projet Pages
+
+1. **Workers & Pages** → ton projet `Caisse_Stand` → onglet **Settings**
+2. Sidebar → **Functions** (sous Settings)
+3. Section **KV namespace bindings** → **Add binding**
+   - Variable name : `KV` ← *important, doit être exactement ce nom*
+   - KV namespace : `caisse-sync` (celui créé à l'étape 1)
+4. Save
+
+### 3. Définir le token partagé `SYNC_TOKEN`
+
+C'est le mot de passe que les téléphones utiliseront pour s'authentifier
+auprès de l'endpoint `/api/sync`. Génère-en un long et aléatoire.
+
+```bash
+# Génère un token aléatoire de 48 chars
+openssl rand -base64 36
+# Exemple : 4vXz8Hk2pLn5qRtY7sUw1bN6mF3jK9aD0gHc8eIo
+```
+
+1. **Workers & Pages** → ton projet → **Settings** → **Environment variables**
+2. **Production** → **Add variable**
+   - Variable name : `SYNC_TOKEN` ← *exactement ce nom*
+   - Value : le token généré ci-dessus
+   - **Type : Secret** ← *coche la case "Encrypt"* pour que le token ne
+     s'affiche jamais en clair dans le dashboard
+3. Save
+
+### 4. Déployer
+
+Le code des Functions est déjà dans le repo (`functions/api/sync.js`). À
+chaque `git push`, Cloudflare Pages le déploie automatiquement.
+
+Si c'est ton premier push après l'ajout des Functions, attends 30-60 s puis
+teste depuis n'importe où :
+
+```bash
+# Test sans auth → doit retourner 401
+curl https://caisse-stand.pages.dev/api/sync
+
+# Test avec auth → doit retourner {"states":[],"count":0}
+curl -H "Authorization: Bearer <ton-SYNC_TOKEN>" \
+     https://caisse-stand.pages.dev/api/sync
+```
+
+### 5. Activer côté téléphones
+
+Sur chaque téléphone :
+
+1. Ouvrir l'app → onglet **Sync** → carte "☁️ Sync auto cloud"
+2. Tap **⚙ Configurer**
+3. Renseigner :
+   - URL : `https://caisse-stand.pages.dev/api/sync` (ton domaine)
+   - Token : le `SYNC_TOKEN` (le même sur tous les téléphones)
+4. Cocher **Activer la sync auto**
+5. Tap **Tester** → doit afficher ✓ vert
+6. Tap **Enregistrer**
+
+L'indicateur passe à 🟢 À jour après le premier round-trip réussi. Les ventes
+faites sur n'importe quel téléphone apparaissent automatiquement sur les
+autres dans les 30 secondes (quand ils sont en ligne).
+
+### 6. Combinaison avec Cloudflare Access (recommandé)
+
+Si tu as activé Cloudflare Access pour restreindre l'accès à l'app à une
+liste d'emails (cf. plus haut), **n'oublie pas d'ajouter une exception**
+pour `/api/sync` — sinon les téléphones ne pourront pas atteindre
+l'endpoint sans login interactif.
+
+Dans Zero Trust → Access → Applications :
+- Soit créer une **2e Application** pour le path `/api/*` avec une policy
+  "Service Auth" et un token, plus complexe
+- Soit (plus simple) utiliser un **path bypass** : Settings → exclure
+  `/api/*` du périmètre protégé. La protection reste sur le SYNC_TOKEN.
 
 ---
 

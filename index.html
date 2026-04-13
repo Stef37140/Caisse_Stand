@@ -537,12 +537,39 @@ function renderPanier() {
   document.getElementById('panier-total-mini').textContent = total + ' €';
   document.getElementById('panier-items').innerHTML = panier.length === 0
     ? '<div class="text-slate-400 text-xs text-center py-2">Panier vide</div>'
-    : panier.map(i => `
-      <div class="flex justify-between items-center text-sm bg-slate-50 px-2 py-1 rounded">
-        <span>${i.qte}× ${i.label}</span>
-        <span class="font-semibold">${i.qte * i.prix} €</span>
+    : panier.map((i, idx) => `
+      <div class="flex justify-between items-center text-sm bg-slate-50 px-2 py-1 rounded gap-2">
+        <span class="flex-1 min-w-0 truncate">${i.qte}× ${i.label}</span>
+        <span class="font-semibold w-14 text-right">${i.qte * i.prix} €</span>
+        <button data-action="panier-dec" data-idx="${idx}" aria-label="Retirer une unité"
+                class="w-8 h-8 flex items-center justify-center rounded bg-slate-300 text-slate-800 font-bold active:bg-slate-400">−</button>
+        <button data-action="panier-del" data-idx="${idx}" aria-label="Supprimer la ligne"
+                class="w-8 h-8 flex items-center justify-center rounded bg-red-100 text-red-700 active:bg-red-200">🗑</button>
       </div>
     `).join('');
+}
+
+// Décrémente de 1 la qté de la ligne à l'index idx. Supprime la ligne si qté = 0.
+function decrementerLignePanier(idx) {
+  const ligne = panier[idx];
+  if (!ligne) return;
+  if (ligne.qte > 1) {
+    ligne.qte--;
+  } else {
+    panier.splice(idx, 1);
+  }
+  renderPanier();
+  renderCaisse(); // pour restaurer le stockDispo visuel
+}
+
+// Supprime toute la ligne à l'index idx.
+function supprimerLignePanier(idx) {
+  const ligne = panier[idx];
+  if (!ligne) return;
+  panier.splice(idx, 1);
+  renderPanier();
+  renderCaisse();
+  showToast(`${ligne.label} retiré du panier`, 'info');
 }
 
 function viderPanier() {
@@ -1040,6 +1067,8 @@ document.addEventListener('click', (e) => {
   else if (action === 'editprod') { ouvrirEditProduit(parseInt(target.dataset.id)); }
   else if (action === 'stockplus') { e.stopPropagation(); modifStock(parseInt(target.dataset.id), 1); }
   else if (action === 'stockminus') { e.stopPropagation(); modifStock(parseInt(target.dataset.id), -1); }
+  else if (action === 'panier-dec') { e.stopPropagation(); decrementerLignePanier(parseInt(target.dataset.idx)); }
+  else if (action === 'panier-del') { e.stopPropagation(); supprimerLignePanier(parseInt(target.dataset.idx)); }
 });
 
 // ============================

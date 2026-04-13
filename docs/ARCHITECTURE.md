@@ -1,271 +1,263 @@
-# ✅ Checklist de tests manuels
+# 🏗️ Architecture
 
-Scénarios à valider après chaque modification significative, avant de commiter / livrer une version.
+Document technique décrivant l'architecture actuelle de la PWA Caisse Stand et les décisions qui la structurent.
 
-**Environnements à tester en priorité** :
-- 📱 iPhone Safari (le plus critique — nombreux pièges PWA)
-- 📱 Android Chrome
-- 💻 Desktop Chrome/Firefox (confort de dev)
+## Vue d'ensemble
 
----
+Application **single-file** : tout tient dans `index.html` (HTML + CSS via Tailwind CDN + JS vanilla inline). Pas de build tool, pas de bundler, pas de framework.
 
-## 🛒 Encaissement
+```
+┌─────────────────────────────────────────┐
+│              index.html                  │
+├─────────────────────────────────────────┤
+│  HTML Structure                          │
+│    ├─ Header (CA total, ventes)          │
+│    ├─ Nav Tabs                           │
+│    ├─ View Caisse                        │
+│    ├─ View Stock                         │
+│    ├─ View Bilan                         │
+│    ├─ View Sync                          │
+│    ├─ Modal Produit                      │
+│    ├─ Modal Générique                    │
+│    └─ Toast                              │
+├─────────────────────────────────────────┤
+│  JavaScript (inline)                     │
+│    ├─ État global                        │
+│    ├─ Persistance (localStorage)         │
+│    ├─ Navigation & rendering             │
+│    ├─ Logique caisse & panier            │
+│    ├─ Logique stock                      │
+│    ├─ Logique bilan & exports            │
+│    ├─ Logique sync & import              │
+│    └─ Event delegation                   │
+└─────────────────────────────────────────┘
+           │
+           ▼
+    ┌──────────────┐
+    │ localStorage │
+    └──────────────┘
+```
 
-### Test 1 : Ajout panier et décrément stock visuel
-- [ ] Ouvrir l'app sur l'onglet Caisse
-- [ ] Taper sur "T-Shirt" → la vue affiche les modèles
-- [ ] Taper sur "Loup" → la vue affiche les tailles
-- [ ] Noter le stock affiché pour "M" (ex: `dispo: 5`)
-- [ ] Taper sur "M" une fois
-- [ ] **Vérifier** : l'affichage passe à `dispo: 4`
-- [ ] Taper 2 fois de plus sur "M"
-- [ ] **Vérifier** : l'affichage passe à `dispo: 2`
-- [ ] Dans la barre panier en bas, **vérifier** : `3 article(s)` et total cohérent
+## Modèle de données
 
-### Test 2 : Stock épuisé bloqué
-- [ ] Ajouter au panier un produit jusqu'à épuisement (ex: `dispo: 0`)
-- [ ] Taper à nouveau sur ce produit
-- [ ] **Vérifier** : un toast "Stock épuisé" apparaît
-- [ ] **Vérifier** : le produit n'est pas ajouté au panier une fois de plus
-- [ ] **Vérifier** : le bouton apparaît grisé / semi-transparent
+### Produit
 
-### Test 3 : Encaissement cash avec rendu monnaie
-- [ ] Avoir un panier non vide (ex: 2 produits, total 40 €)
-- [ ] Taper "💵 CASH"
-- [ ] **Vérifier** : une modal s'ouvre avec titre "Encaissement cash : 40 €"
-- [ ] **Vérifier** : le champ montant est pré-rempli avec 40
-- [ ] Saisir 50
-- [ ] **Vérifier** : "À rendre au client : 10,00 €" s'affiche en vert
-- [ ] Saisir 30
-- [ ] **Vérifier** : "Manque 10,00 €" s'affiche en rouge
-- [ ] Remettre 50
-- [ ] Taper "Valider"
-- [ ] **Vérifier** : la modal se ferme
-- [ ] **Vérifier** : un toast "✓ Encaissé 40 € (cash)" apparaît
-- [ ] **Vérifier** : le stock est bien décrémenté dans l'onglet Stock
-- [ ] **Vérifier** : la vente apparaît dans l'onglet Bilan
+```javascript
+{
+  id: Number,           // Auto-incrémenté
+  categorie: String,    // "T-Shirt" | "Pull" | "Sweat"
+  modele: String,       // "Loup" | "Tiki" | ...
+  taille: String,       // "S" | "M" | "L" | "XL" | "XXL"
+  prix: Number,         // en euros
+  stock: Number         // quantité disponible (décrémenté à l'encaissement)
+}
+```
 
-### Test 4 : Encaissement CB direct
-- [ ] Avoir un panier non vide
-- [ ] Taper "💳 CB"
-- [ ] **Vérifier** : pas de modal (paiement CB = pas de rendu monnaie)
-- [ ] **Vérifier** : toast "✓ Encaissé X € (CB)"
-- [ ] **Vérifier** : dans Bilan, la vente apparaît avec le mode CB (couleur bleue)
+### Vente
 
-### Test 5 : Annulation dernière vente
-- [ ] Faire au moins une vente
-- [ ] Déplier le panier (tap sur la barre en bas)
-- [ ] Taper "Annuler dernière vente"
-- [ ] **Vérifier** : modal de confirmation s'ouvre
-- [ ] Confirmer
-- [ ] **Vérifier** : la vente est retirée
-- [ ] **Vérifier** : le stock est restauré
-- [ ] **Vérifier** : le CA header diminue du bon montant
+```javascript
+{
+  id: String,           // "dev_abc123_1234567890_xy45" (unique cross-device)
+  timestamp: String,    // ISO 8601
+  date: String,         // "12/04/2026" (format FR)
+  heure: String,        // "14:35"
+  deviceId: String,     // "dev_abc123"
+  deviceLabel: String,  // "Tel Stéf"
+  items: [
+    {
+      id: Number,       // produit.id
+      label: String,    // "Loup M" (snapshot au moment de la vente)
+      prix: Number,     // prix unitaire (snapshot)
+      qte: Number
+    }
+  ],
+  total: Number,        // somme items (prix × qte)
+  mode: String          // "cash" | "cb"
+}
+```
 
-### Test 6 : Vider panier
-- [ ] Ajouter plusieurs produits au panier
-- [ ] Déplier le panier
-- [ ] Taper "Vider panier"
-- [ ] **Vérifier** : le panier est vide
-- [ ] **Vérifier** : le stock disponible est restauré dans la grille
+### État global (en mémoire, synchronisé avec localStorage)
 
----
+```javascript
+produits = [Produit, ...]
+ventes = [Vente, ...]
+fondCaisse = Number
+panier = [Item, ...]       // non persisté, éphémère
+deviceId = String          // persistant dans localStorage séparé
+deviceLabel = String       // persistant dans localStorage séparé
+lastBackup = String (ISO)  // timestamp de la dernière sauvegarde JSON
+```
 
-## 📦 Stock
+## Persistance
 
-### Test 7 : Modification stock via boutons +/−
-- [ ] Onglet Stock
-- [ ] Taper sur le bouton "+" d'un produit
-- [ ] **Vérifier** : le stock augmente de 1 dans la liste Stock
-- [ ] Taper sur "−"
-- [ ] **Vérifier** : le stock diminue
-- [ ] Revenir sur l'onglet Caisse
-- [ ] **Vérifier** : le stock affiché est à jour
+Deux clés `localStorage` distinctes :
 
-### Test 8 : Ajout produit
-- [ ] Onglet Stock
-- [ ] Taper "+ Ajouter un produit"
-- [ ] **Vérifier** : modal s'ouvre
-- [ ] Sélectionner catégorie = Sweat
-- [ ] Sélectionner modèle = Arbre de vie
-- [ ] Sélectionner taille = L
-- [ ] Saisir prix = 50
-- [ ] Saisir stock = 3
-- [ ] Taper "Enregistrer"
-- [ ] **Vérifier** : toast "Produit ajouté"
-- [ ] **Vérifier** : le nouveau produit apparaît dans la liste stock
-- [ ] Aller dans Caisse → Sweat → Arbre de vie
-- [ ] **Vérifier** : "L" apparaît avec prix 50 et stock 3
+1. **`caisse_data`** : objet JSON contenant `{ produits, ventes, fondCaisse, sessionDate, lastBackup }`
+2. **`caisse_device_id`** et **`caisse_device_label`** : identité de l'appareil, gardés séparément pour qu'un reset de session ne les efface pas
 
-### Test 9 : Édition produit
-- [ ] Onglet Stock
-- [ ] Taper sur une ligne produit (pas sur les boutons +/−)
-- [ ] **Vérifier** : modal d'édition s'ouvre avec les valeurs actuelles
-- [ ] Modifier le prix
-- [ ] Taper "Enregistrer"
-- [ ] **Vérifier** : toast "Produit modifié"
-- [ ] **Vérifier** : le nouveau prix apparaît dans Stock et dans Caisse
+**Sauvegarde** : fonction `save()` appelée après chaque mutation importante (ajout vente, modif stock, reset…).
 
-### Test 10 : Suppression produit
-- [ ] Éditer un produit
-- [ ] Taper le bouton 🗑
-- [ ] **Vérifier** : modal de confirmation
-- [ ] Confirmer
-- [ ] **Vérifier** : le produit disparaît de Stock
-- [ ] **Vérifier** : il n'apparaît plus dans Caisse
+**Chargement** : `load()` appelée à l'init, avec fallback `initDemo()` si aucune donnée trouvée.
 
----
+## Rendering
 
-## 📊 Bilan
+Pattern **full re-render** de chaque vue à chaque modification (simple et fiable pour la taille actuelle de l'app) :
 
-### Test 11 : Définir fond de caisse
-- [ ] Onglet Bilan
-- [ ] Taper "Définir" à côté de "Fond de caisse initial"
-- [ ] **Vérifier** : modal s'ouvre
-- [ ] Saisir 50
-- [ ] Taper "Enregistrer"
-- [ ] **Vérifier** : toast "Fond de caisse : 50 €"
-- [ ] **Vérifier** : le montant affiche 50 €
-- [ ] **Vérifier** : la caisse théorique est mise à jour
+- `renderCaisse()` : grille produits selon le niveau de navigation courant
+- `renderPanier()` : barre panier compacte + détail déplié
+- `renderStock()` : liste produits groupée par catégorie
+- `renderHisto()` : totaux, top produits, historique
+- `renderSync()` : ventilation par appareil, infos device
 
-### Test 12 : Comptage final
-- [ ] Faire au moins une vente cash (ex: 20 €)
-- [ ] Définir un fond de caisse (ex: 50 €)
-- [ ] Taper "🧮 Faire le comptage"
-- [ ] **Vérifier** : modal avec le total théorique annoncé (70 €)
-- [ ] Saisir 70
-- [ ] Taper "Comparer"
-- [ ] **Vérifier** : bandeau vert "✓ Caisse juste (70 €)"
-- [ ] Refaire le comptage avec 65
-- [ ] **Vérifier** : bandeau rouge "−5 € d'écart"
-- [ ] Refaire avec 75
-- [ ] **Vérifier** : bandeau rouge "+5 € d'écart"
+Pas de diff algorithm, pas de Virtual DOM. Si l'app grossit significativement (>200 produits, >1000 ventes), il faudra peut-être optimiser.
 
-### Test 13 : Export CSV
-- [ ] Faire plusieurs ventes avec différents modes
-- [ ] Onglet Bilan → "📥 Export CSV"
-- [ ] **Vérifier** : un fichier `caisse_YYYY-MM-DD.csv` est téléchargé
-- [ ] Ouvrir le fichier dans Excel / LibreOffice
-- [ ] **Vérifier** : les accents sont corrects (Loup, Arbre de vie…)
-- [ ] **Vérifier** : colonnes : Date, Heure, Appareil, Catégorie, Modèle, Taille, Quantité, Prix unitaire, Total ligne, Mode, TimestampISO
-- [ ] **Vérifier** : chaque ligne du panier est une ligne CSV (un panier de 2 articles = 2 lignes)
+## Navigation 2 niveaux (onglet Caisse)
 
-### Test 14 : Nouvelle session (reset)
-- [ ] Avoir des ventes en cours
-- [ ] Onglet Bilan → "🔄 Nouvelle session"
-- [ ] **Vérifier** : modal de confirmation
-- [ ] Confirmer
-- [ ] **Vérifier** : un fichier JSON est téléchargé automatiquement (sauvegarde auto)
-- [ ] **Vérifier** : les ventes sont effacées
-- [ ] **Vérifier** : le fond de caisse est remis à 0
-- [ ] **Vérifier** : le stock est conservé (produits toujours présents)
+```
+Niveau 0: Catégories        [T-Shirt] [Pull] [Sweat]
+              ↓ (tap)
+Niveau 1: Modèles           [🐺 Loup] [🗿 Tiki] [🌳 Arbre] ...
+              ↓ (tap)
+Niveau 2: Tailles           [M] [L] [XL]
+              ↓ (tap)
+          Ajout panier
+```
 
----
+Variables d'état : `currentLevel` (0/1/2), `selCat`, `selModele`.
 
-## 🔄 Sync
+Le fil d'Ariane permet de revenir en arrière à tout moment.
 
-### Test 15 : Export JSON manuel
-- [ ] Onglet Sync
-- [ ] Taper "📤 Exporter sauvegarde JSON"
-- [ ] **Vérifier** : un fichier `caisse_backup_<appareil>_<datetime>.json` est téléchargé
-- [ ] Ouvrir le fichier dans un éditeur texte
-- [ ] **Vérifier** : JSON valide avec champs `version`, `deviceId`, `deviceLabel`, `produits`, `ventes`, `fondCaisse`
+## Stock "disponible" vs stock réel
 
-### Test 16 : Fusion multi-appareils
-- [ ] Créer 2 exports JSON depuis 2 "appareils" différents (simuler en changeant le deviceLabel entre deux sessions, ou tester sur 2 vrais téléphones)
-- [ ] Sur un 3e téléphone (ou après reset) : Sync → "📥 Importer et fusionner"
-- [ ] Sélectionner les 2 fichiers JSON (sélection multiple)
-- [ ] **Vérifier** : toast "X ajoutées, Y doublons"
-- [ ] **Vérifier** : dans Bilan, toutes les ventes des 2 appareils sont visibles avec leurs labels
-- [ ] **Vérifier** : dans Sync, la "Ventilation par appareil" montre bien les 2 sources
-- [ ] Réimporter les mêmes fichiers
-- [ ] **Vérifier** : aucun doublon créé (tout en "doublons ignorés")
+**Concept critique** introduit en V2.1 pour éviter les doubles ventes en cours de panier :
 
-### Test 17 : Restauration
-- [ ] Avoir des données actuelles
-- [ ] Taper "♻️ Restaurer un backup"
-- [ ] Confirmer
-- [ ] Sélectionner un ancien fichier JSON
-- [ ] **Vérifier** : les données actuelles sont totalement remplacées
-- [ ] **Vérifier** : produits, ventes, fond de caisse correspondent au backup
+```javascript
+function stockDispo(produitId) {
+  const p = produits.find(x => x.id === produitId);
+  const dansPanier = panier.filter(i => i.id === produitId).reduce((s,i) => s + i.qte, 0);
+  return p.stock - dansPanier;
+}
+```
 
-### Test 18 : Renommage appareil
-- [ ] Sync → "Renommer l'appareil"
-- [ ] **Vérifier** : modal s'ouvre avec le label actuel
-- [ ] Saisir un nouveau nom
-- [ ] Valider
-- [ ] **Vérifier** : le nom est mis à jour dans le header de l'app
-- [ ] **Vérifier** : les futures ventes sont taguées avec le nouveau label
-- [ ] Recharger la page
-- [ ] **Vérifier** : le nouveau nom persiste
+Partout où on affiche un stock dans la grille caisse, on affiche **`stockDispo`**, pas `p.stock`. Le stock réel n'est décrémenté qu'à la finalisation de la vente (`finaliserVente()`).
 
----
+Conséquence : si on ajoute 3 produits au panier puis qu'on vide le panier, le stock visuel revient à l'état initial sans avoir touché à `p.stock`.
 
-## 🔒 Persistance
+## Event delegation
 
-### Test 19 : Survie des données au rechargement
-- [ ] Faire des ventes
-- [ ] Définir un fond de caisse
-- [ ] Modifier un produit
-- [ ] Fermer complètement l'onglet
-- [ ] Rouvrir l'URL
-- [ ] **Vérifier** : toutes les données sont conservées
+Pour gérer efficacement les clics sur les éléments générés dynamiquement (grille produits, liste stock), on utilise **un seul listener global** qui inspecte les `data-action` :
 
-### Test 20 : Mode hors-ligne
-- [ ] Charger l'app une première fois avec réseau
-- [ ] Activer le mode avion
-- [ ] Recharger la page
-- [ ] **Vérifier** : l'app fonctionne normalement (⚠️ nécessite service worker en V3+ pour être réellement offline avec cold start)
-- [ ] Faire des ventes
-- [ ] **Vérifier** : tout est enregistré localement
+```javascript
+document.addEventListener('click', (e) => {
+  const target = e.target.closest('[data-action], [data-tab]');
+  if (!target) return;
+  const action = target.dataset.action;
+  if (action === 'addpanier') ajouterAuPanier(parseInt(target.dataset.id));
+  else if (action === 'selcat') { /* ... */ }
+  // ...
+});
+```
 
----
+**Avantages** :
+- Fonctionne sur les éléments générés après le binding du listener
+- Un seul listener au lieu de dizaines
+- Plus lisible que des `onclick="fn(arg)"` inline
 
-## 🎨 UI / UX
+**Inconvénient** : il faut penser à ajouter un `data-action` sur chaque élément cliquable dans le HTML généré.
 
-### Test 21 : Toast non-intrusif
-- [ ] Faire une action déclenchant un toast
-- [ ] **Vérifier** : apparaît en bas au-dessus de la barre panier
-- [ ] **Vérifier** : disparaît automatiquement après ~2 s
-- [ ] **Vérifier** : ne bloque pas les clics (on peut continuer à taper en dessous)
+## Modal générique `genModal`
 
-### Test 22 : Panier compact vs déplié
-- [ ] Ajouter des articles au panier
-- [ ] **Vérifier** : barre compacte visible en bas
-- [ ] Taper sur la barre
-- [ ] **Vérifier** : le détail du panier se déplie
-- [ ] Retaper pour replier
+**Pourquoi** : les fonctions natives `prompt()` et `confirm()` sont **bloquées silencieusement** sur Safari iOS en mode PWA/standalone. On ne peut pas leur faire confiance.
 
-### Test 23 : Navigation breadcrumb
-- [ ] Naviguer jusqu'au niveau 2 (Catégorie → Modèle → Tailles)
-- [ ] **Vérifier** : breadcrumb "Accueil › T-Shirt › Loup" visible
-- [ ] Taper sur "Accueil"
-- [ ] **Vérifier** : retour niveau 0
-- [ ] Retaper sur Catégorie et Modèle
-- [ ] Taper sur le nom de la catégorie dans le breadcrumb
-- [ ] **Vérifier** : retour niveau 1 (liste des modèles de cette catégorie)
+**Solution** : une seule modal HTML réutilisable qui supporte :
+- Titre
+- Message
+- Input numérique optionnel
+- Boutons OK/Annuler personnalisables
+- **Mode "rendu monnaie"** avec calcul en temps réel (quand `showRendu: true`)
+- Callback `onOk` à l'exécution du bouton OK
 
----
+Usage :
 
-## 📱 Spécifique mobile
+```javascript
+genModal({
+  title: 'Fond de caisse',
+  message: 'Montant initial en euros',
+  input: true,
+  inputValue: fondCaisse,
+  okLabel: 'Enregistrer',
+  onOk: () => {
+    const n = parseFloat(document.getElementById('gen-input').value);
+    if (isNaN(n)) return;
+    fondCaisse = n;
+    save();
+    fermerGenModal();
+  }
+});
+```
 
-### Test 24 : iOS Safari
-- [ ] Ouvrir l'app sur iPhone via Safari
-- [ ] Passer tous les tests 1 à 23
-- [ ] **Vérifier spécifiquement** : aucun `prompt()` / `confirm()` natif n'apparaît
-- [ ] **Vérifier** : les modals HTML s'affichent correctement
-- [ ] **Vérifier** : les téléchargements fonctionnent (CSV, JSON)
+## Multi-appareils et fusion
 
-### Test 25 : Android Chrome
-- [ ] Ouvrir l'app sur Android via Chrome
-- [ ] Passer tous les tests 1 à 23
-- [ ] **Vérifier** : performances similaires à iOS
+Chaque appareil a un `deviceId` unique (8 caractères aléatoires) généré au premier lancement. Chaque vente contient ce `deviceId` et un ID unique qui combine `deviceId + timestamp + random`.
 
----
+**Fusion** (import JSON) : on parcourt les ventes importées, et on ajoute uniquement celles dont l'ID n'existe pas déjà dans le tableau `ventes`. La déduplication est donc automatique et idempotente — on peut réimporter le même fichier plusieurs fois sans créer de doublons.
 
-## ✍️ Notes pour les futurs tests
+**Restauration** : remplace totalement `produits`, `ventes`, `fondCaisse` par le contenu du fichier. Usage : retour à un état précédent, reprise après crash.
 
-- Toujours tester au moins sur **iPhone Safari** avant de merger une feature — c'est l'environnement le plus piégeux.
-- En cas de doute sur un comportement bizarre : ouvrir la console (Safari sur iPhone connecté à Mac via USB pour le debug).
-- Si un bouton ne fait rien : vérifier que la fonction ne contient pas un `prompt`/`confirm` oublié.
-- Si un téléchargement ne marche pas : vérifier que l'app est servie en HTTP(S), pas en `file://`.
+## Toast
+
+Petite pastille fixe en bas d'écran (`bottom-24`), animée via CSS keyframes (`toastIn`), disparaît automatiquement après 1,8 s.
+
+Usage :
+
+```javascript
+showToast('Message');              // success (gris foncé)
+showToast('Erreur', 'error');      // rouge
+showToast('Info', 'info');         // bleu
+```
+
+Non cliquable (`pointer-events: none`), ne bloque jamais l'interface.
+
+## Exports
+
+### CSV
+
+Encodage UTF-8 avec BOM (`'\ufeff'`) pour que les accents s'affichent correctement dans Excel.
+
+Séparateur point-virgule `;` (convention FR).
+
+Colonnes : Date, Heure, Appareil, Catégorie, Modèle, Taille, Quantité, Prix unitaire, Total ligne, Mode, TimestampISO.
+
+### JSON
+
+Format pivot complet avec metadata :
+
+```json
+{
+  "version": 2,
+  "exportedAt": "2026-04-12T14:30:00.000Z",
+  "deviceId": "dev_abc123",
+  "deviceLabel": "Tel Stéf",
+  "produits": [...],
+  "ventes": [...],
+  "fondCaisse": 50
+}
+```
+
+## Points d'attention pour l'évolution
+
+### Quota localStorage
+
+~5 Mo par origine. Largement suffisant pour des milliers de ventes texte. **Deviendra limitant** si on ajoute des images produits en base64 → migration vers IndexedDB à prévoir.
+
+### Performance re-render
+
+Tant qu'on est sous 200 produits et 1000 ventes, le full re-render est instantané. Au-delà, il faudra soit optimiser (diff, keyed rendering), soit virtualiser les listes longues.
+
+### Concurrence multi-onglets
+
+Si l'utilisateur ouvre l'app dans deux onglets, les modifications ne sont pas synchronisées (chaque onglet a son état en mémoire). Solution possible : écouter l'event `storage` sur `window` pour détecter les changements localStorage faits dans un autre onglet.
+
+### Mises à jour de l'app (V3+)
+
+Une fois la PWA installée avec service worker, il faut gérer proprement les mises à jour pour ne pas bloquer l'utilisateur sur une ancienne version. Prévoir un bandeau "Nouvelle version disponible, recharger" et un `skipWaiting()` contrôlé.

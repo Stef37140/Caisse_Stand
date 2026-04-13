@@ -2220,15 +2220,23 @@ function ouvrirCloudConfig() {
 // EVENT DELEGATION (remplace tous les onclick inline)
 // ============================
 document.addEventListener('click', (e) => {
-  const target = e.target.closest('[data-action], [data-tab]');
+  const target = e.target.closest('[data-action], [data-tab], [data-taxotab]');
   if (!target) return;
-  
-  // Tabs
+
+  // Onglets internes du modal Référentiel (gérés en premier, retour direct)
+  if (target.dataset.taxotab) {
+    taxoCurrentTab = target.dataset.taxotab;
+    renderTaxoTab();
+    document.getElementById('taxo-form').classList.add('hidden');
+    return;
+  }
+
+  // Tabs principaux
   if (target.dataset.tab) {
     showTab(target.dataset.tab);
     return;
   }
-  
+
   const action = target.dataset.action;
   if (action === 'selcat') { selCat = target.dataset.cat; currentLevel = 1; renderCaisse(); }
   else if (action === 'selmodele') { selModele = decodeURIComponent(target.dataset.modele); currentLevel = 2; renderCaisse(); }
@@ -2241,10 +2249,6 @@ document.addEventListener('click', (e) => {
   else if (action === 'panier-del') { e.stopPropagation(); supprimerLignePanier(parseInt(target.dataset.idx)); }
   else if (action === 'taxo-edit')  { e.stopPropagation(); ouvrirTaxoForm(decodeURIComponent(target.dataset.nom)); }
   else if (action === 'taxo-del')   { e.stopPropagation(); supprimerTaxoItem(decodeURIComponent(target.dataset.nom)); }
-
-  // Onglets internes du modal Référentiel
-  const taxotab = target.dataset && target.dataset.taxotab;
-  if (taxotab) { taxoCurrentTab = taxotab; renderTaxoTab(); document.getElementById('taxo-form').classList.add('hidden'); }
 });
 
 // ============================

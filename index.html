@@ -1124,6 +1124,7 @@ function resetSession() {
       fondCaisse = 0;
       document.getElementById('ecart-result').classList.add('hidden');
       save();
+      if (typeof cloudClearPushFp === 'function') cloudClearPushFp(); // force le prochain push
       updateHeader();
       renderPanier();
       renderHisto();
@@ -1280,6 +1281,7 @@ async function handleImport(e, mode) {
     });
   }
   save();
+  if (typeof cloudClearPushFp === 'function') cloudClearPushFp(); // nouvel état à propager
   updateHeader();
   renderHisto();
   renderSync();
@@ -1555,7 +1557,11 @@ function handleQRDetected(text) {
 
 function appliquerPayloadRecu(payload) {
   const r = applySyncPayload(payload);
+  const changed = r.produitsAjoutes || r.produitsMaj || r.produitsSupprimes || r.ventesAjoutees;
   save();
+  // Si la sync QR a modifié l'état, on veut que le prochain push cloud reparte
+  // (sinon le nouveau contenu ne serait jamais propagé au cloud).
+  if (changed && typeof cloudClearPushFp === 'function') cloudClearPushFp();
   renderCaisse();
   renderStock();
   renderHisto();
@@ -1608,17 +1614,39 @@ let cloudConfig = null;
 let cloudPollInterval = null;
 let cloudLastPushAt = null;
 let cloudLastPullAt = null;
+let cloudLastPushFp = null;   // empreinte du dernier payload effectivement poussé
+let cloudPushesSkipped = 0;   // compteur debug : combien de pushes évités
 const CLOUD_POLL_MS = 30000; // 30 secondes
 
 function cloudConfigLoad() {
   try { cloudConfig = JSON.parse(localStorage.getItem('caisse_cloud_config') || 'null'); }
   catch(e) { cloudConfig = null; }
+  try { cloudLastPushFp = localStorage.getItem('caisse_cloud_last_push_fp') || null; }
+  catch(e) { cloudLastPushFp = null; }
 }
 
 function cloudConfigSave(cfg) {
   cloudConfig = cfg;
   if (cfg) localStorage.setItem('caisse_cloud_config', JSON.stringify(cfg));
   else localStorage.removeItem('caisse_cloud_config');
+}
+
+// Empreinte structurelle du payload : si identique au dernier push, on skip.
+// On combine : nb produits + nb ventes + timestamp max des deux, + le label
+// appareil (pour qu'un renommage déclenche quand même un push).
+function cloudPayloadFingerprint(payload) {
+  const ventes = payload.ventes || [];
+  const produits = payload.produits || [];
+  let maxVTs = '', maxPTs = '';
+  for (const v of ventes) if ((v.timestamp || '') > maxVTs) maxVTs = v.timestamp;
+  for (const p of produits) if ((p.lastModified || '') > maxPTs) maxPTs = p.lastModified;
+  return `${payload.fromLabel || ''}|${ventes.length}|${produits.length}|${maxVTs}|${maxPTs}`;
+}
+
+function cloudClearPushFp() {
+  // Appelé après reset session / import / restore : force le prochain push
+  cloudLastPushFp = null;
+  try { localStorage.removeItem('caisse_cloud_last_push_fp'); } catch(e) {}
 }
 
 function cloudIsActive() {
@@ -1648,11 +1676,21 @@ function cloudUpdateLastSyncDisplay() {
   el.textContent = 'Dernier : ' + new Date(ts).toLocaleTimeString('fr-FR');
 }
 
-async function cloudPush() {
+async function cloudPush(opts) {
+  // opts.force = true pour ignorer l'empreinte (utilisé par "Sync maintenant")
   if (!cloudIsActive()) return false;
   if (!navigator.onLine) { cloudSetStatus('offline'); return false; }
-  cloudSetStatus('syncing');
   const payload = buildSyncPayload(''); // état complet de cet appareil
+  const fp = cloudPayloadFingerprint(payload);
+
+  // Skip si rien n'a changé depuis le dernier push réussi (sauf si forcé).
+  // Objectif : rester largement sous le quota KV free tier (1 000 writes/j).
+  if (!(opts && opts.force) && fp === cloudLastPushFp) {
+    cloudPushesSkipped++;
+    return true; // pas une erreur : volontaire
+  }
+
+  cloudSetStatus('syncing');
   try {
     const res = await fetch(cloudConfig.url, {
       method: 'POST',
@@ -1661,6 +1699,8 @@ async function cloudPush() {
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     cloudLastPushAt = nowIso();
+    cloudLastPushFp = fp;
+    try { localStorage.setItem('caisse_cloud_last_push_fp', fp); } catch(e) {}
     return true;
   } catch (e) {
     cloudSetStatus('err', e.message.slice(0, 30));
@@ -1701,12 +1741,14 @@ async function cloudPull() {
   }
 }
 
-async function cloudSyncRoundTrip() {
+async function cloudSyncRoundTrip(opts) {
+  // opts.force = true depuis le bouton "Sync maintenant" : pousse même si
+  // l'empreinte est identique (utile pour retester après une erreur serveur).
   if (!cloudIsActive()) {
     showToast('Sync cloud non configurée', 'error');
     return;
   }
-  const pushed = await cloudPush();
+  const pushed = await cloudPush(opts);
   const pulled = await cloudPull();
   if (pushed || pulled) cloudUpdateLastSyncDisplay();
 }
@@ -1864,7 +1906,7 @@ document.getElementById('btn-qr-next').addEventListener('click', () => {
 
 // Cloud sync (Cloudflare KV)
 document.getElementById('btn-cloud-config').addEventListener('click', ouvrirCloudConfig);
-document.getElementById('btn-cloud-sync-now').addEventListener('click', cloudSyncRoundTrip);
+document.getElementById('btn-cloud-sync-now').addEventListener('click', () => cloudSyncRoundTrip({ force: true }));
 cloudConfigLoad();
 startCloudPolling();
 window.addEventListener('online', () => { if (cloudIsActive()) cloudSyncRoundTrip(); });

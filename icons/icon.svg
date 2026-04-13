@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112.64" ry="112.64" fill="#1e3a8a"/>
+  <g transform="translate(38.400000000000006,38.400000000000006) scale(4.352)">
+    
+      <g stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <!-- Anses du panier -->
+        <path d="M 30 40 Q 30 20 50 20 Q 70 20 70 40"/>
+      </g>
+      <g fill="#ffffff">
+        <!-- Corps du panier (trapèze arrondi) -->
+        <path d="M 18 40 L 82 40 L 75 85 Q 74 90 69 90 L 31 90 Q 26 90 25 85 Z"/>
+      </g>
+      <!-- Symbole € dans le panier, en bleu -->
+      <text x="50" y="78" font-family="Arial Black, Helvetica, sans-serif" font-size="38" font-weight="900"
+            fill="#1e3a8a" text-anchor="middle">€</text>
+    
+  </g>
+</svg>

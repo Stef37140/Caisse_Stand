@@ -6,7 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1e3a8a">
-<title>Caisse Stand v2.1</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<title>Caisse Stand v3.0</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   body { -webkit-tap-highlight-color: transparent; user-select: none; touch-action: manipulation; }
@@ -142,9 +146,20 @@
       <h3 class="font-bold text-sm text-slate-700 mb-2">📱 Ventilation par appareil</h3>
       <div id="device-breakdown" class="space-y-1 text-xs"></div>
     </div>
+    <div id="install-card" class="hidden bg-emerald-50 border border-emerald-200 p-3 rounded-lg mb-3">
+      <h3 class="font-bold text-sm text-emerald-900 mb-1">📲 Installer l'app</h3>
+      <p class="text-xs text-emerald-800 mb-2" id="install-hint">Installe Caisse Stand comme une vraie app pour un accès rapide hors ligne.</p>
+      <button id="btn-install" class="hidden w-full bg-emerald-600 text-white py-2 rounded-lg text-sm font-semibold">📲 Installer maintenant</button>
+    </div>
+    <div id="update-card" class="hidden bg-amber-50 border border-amber-300 p-3 rounded-lg mb-3">
+      <h3 class="font-bold text-sm text-amber-900 mb-1">🔄 Nouvelle version disponible</h3>
+      <p class="text-xs text-amber-800 mb-2">Une mise à jour a été téléchargée. Recharger pour l'activer ?</p>
+      <button id="btn-update-app" class="w-full bg-amber-600 text-white py-2 rounded-lg text-sm font-semibold">Recharger avec la nouvelle version</button>
+    </div>
     <div class="bg-slate-50 border border-slate-200 p-3 rounded-lg text-xs text-slate-600">
       <div><strong>Cet appareil :</strong> <span id="device-id-full" class="font-mono"></span></div>
       <div class="mt-1"><strong>Dernière sauvegarde :</strong> <span id="last-backup">jamais</span></div>
+      <div class="mt-1"><strong>Mode :</strong> <span id="display-mode" class="font-mono">navigateur</span></div>
       <button id="btn-rename-device" class="mt-2 bg-slate-600 text-white px-3 py-1 rounded text-xs">Renommer l'appareil</button>
     </div>
   </section>
@@ -1060,6 +1075,120 @@ document.getElementById('gen-ok').addEventListener('click', () => {
 updateHeader();
 renderCaisse();
 renderPanier();
+
+// ========== PWA : service worker + installabilité ==========
+
+// Détection du contexte d'affichage (standalone = app installée)
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true; // iOS Safari
+}
+
+function updateDisplayMode() {
+  const el = document.getElementById('display-mode');
+  if (el) el.textContent = isStandalone() ? 'app installée (standalone)' : 'navigateur';
+}
+updateDisplayMode();
+
+// Détection iOS Safari (pour afficher instructions manuelles si besoin)
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+// --- Card d'installation ---
+let deferredInstallPrompt = null;
+const installCard = document.getElementById('install-card');
+const installBtn = document.getElementById('btn-install');
+const installHint = document.getElementById('install-hint');
+
+function showInstallCardIfRelevant() {
+  if (isStandalone()) return; // déjà installée
+  if (deferredInstallPrompt) {
+    // Android Chrome / Edge : on peut déclencher le prompt natif
+    installCard.classList.remove('hidden');
+    installBtn.classList.remove('hidden');
+    installHint.textContent = 'Installe Caisse Stand comme une vraie app pour un accès rapide hors ligne.';
+  } else if (isIOS()) {
+    // iOS Safari : pas d'API, on affiche les instructions
+    installCard.classList.remove('hidden');
+    installBtn.classList.add('hidden');
+    installHint.innerHTML = 'Sur iPhone : ouvrir le menu <strong>Partager</strong> ↑ puis <strong>« Sur l\'écran d\'accueil »</strong>.';
+  }
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallCardIfRelevant();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  installCard.classList.add('hidden');
+  updateDisplayMode();
+  showToast('✓ App installée');
+});
+
+if (installBtn) {
+  installBtn.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    if (outcome === 'accepted') {
+      installCard.classList.add('hidden');
+    }
+    deferredInstallPrompt = null;
+  });
+}
+
+// Affiche la card iOS au chargement (sans attendre beforeinstallprompt qui n'arrivera jamais)
+showInstallCardIfRelevant();
+
+// --- Service worker : registration + update flow ---
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      // Vérifie périodiquement les mises à jour (toutes les heures)
+      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+
+      // Nouvelle version détectée (un SW en "installing" attend en "waiting")
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        if (!newSW) return;
+        newSW.addEventListener('statechange', () => {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+            // Il y a déjà un SW actif → c'est une mise à jour
+            document.getElementById('update-card').classList.remove('hidden');
+          }
+        });
+      });
+    }).catch((err) => {
+      console.warn('SW registration failed:', err);
+    });
+
+    // Quand le nouveau SW prend le contrôle → reload
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+  });
+}
+
+// Bouton "Recharger avec la nouvelle version"
+const btnUpdate = document.getElementById('btn-update-app');
+if (btnUpdate) {
+  btnUpdate.addEventListener('click', () => {
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      if (reg && reg.waiting) {
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      } else {
+        window.location.reload();
+      }
+    });
+  });
+}
 </script>
 </body>
 </html>

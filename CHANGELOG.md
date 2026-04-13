@@ -7,10 +7,46 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 ## [Unreleased]
 
 ### À venir
-- manifest.json et service worker pour installation PWA native (V3.0)
-- Icônes PWA dédiées
-- Images produits (remplacement des emojis)
-- Archivage des sessions clôturées
+- Images produits (remplacement des emojis) — V3.2
+- Archivage des sessions clôturées — V3.3
+- Rendu monnaie avancé avec coupures rapides — V3.4
+
+---
+
+## [3.0.0] — PWA installable
+
+### Ajouté
+- **`manifest.json`** à la racine (name, short_name, display standalone, orientation portrait, theme_color `#1e3a8a`, background_color `#f1f5f9`)
+- **Service worker `sw.js`** avec stratégie cache-first
+  - Pré-cache de l'app-shell à l'install (index.html, manifest, icônes)
+  - Network-first avec fallback cache pour le CDN Tailwind (cross-origin)
+  - Fallback navigation vers `index.html` en offline
+  - `CACHE_VERSION` pour versioner et invalider proprement
+  - **`skipWaiting()` contrôlé** par postMessage depuis la page (bandeau "Nouvelle version dispo" — l'utilisateur décide quand recharger)
+- **Icônes PWA** `icons/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`
+  - Design : shopping bag blanc + symbole € bleu sur fond `#1e3a8a`, coins arrondis pour les icônes "any", safe zone 70 % pour la maskable
+  - Sources SVG conservées pour édition future
+- **Card d'installation dans l'onglet Sync**
+  - Android Chrome : capture de `beforeinstallprompt` + bouton "Installer maintenant"
+  - iOS Safari : instructions manuelles "Partager → Sur l'écran d'accueil"
+  - Se masque automatiquement après installation ou en mode standalone
+- **Card "Nouvelle version disponible"** quand le SW détecte une mise à jour
+- **Affichage "Mode : navigateur / app installée"** dans la section infos appareil
+- **Documentation `docs/DEPLOIEMENT.md`** : procédures local (Python http.server), GitHub Pages, Synology Web Station, Docker nginx + checklist de validation PWA + troubleshooting
+
+### Modifié
+- Title de la page : `Caisse Stand v2.1` → `Caisse Stand v3.0`
+
+### Corrigé
+- **Nettoyage des noms de fichiers** du repo (contenus mélangés hérités de l'upload initial) :
+  - L'app V2.1 était dans `caisse_stand_v2_1.html` → renommée `index.html`
+  - `index.html` initial (contenu REX/PENDING_LEARNINGS) → restauré au bon endroit
+  - `REX/PENDING_LEARNINGS.md` (duplicata de BUGS_RESOLUS) → écrasé par le vrai contenu
+  - `README.md` (contenu CHANGELOG) → renommé `CHANGELOG.md`
+  - Nouveau `README.md` public rédigé
+  - `ROADMAP.md` (duplicata de CLAUDE.md) → réécrit comme vrai roadmap priorisé
+  - `PROMPT_CLAUDE_CODE.md` (contenu gitignore) → renommé `.gitignore`
+  - `download` (duplicata de `docs/ARCHITECTURE.md`) → supprimé
 
 ---
 

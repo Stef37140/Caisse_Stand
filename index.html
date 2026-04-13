@@ -948,10 +948,42 @@ function demarrerImportRestore() {
   });
 }
 
+// Génère une clé de déduplication robuste pour une vente.
+// - Si la vente a un id : on l'utilise (format V2+ : deviceId_timestamp_random)
+// - Sinon (legacy / JSON édité à la main) : on construit une clé synthétique
+//   à partir du contenu (deviceId + timestamp + total + qtés) pour éviter
+//   les faux doublons tout en détectant les vrais.
+function venteDedupeKey(v) {
+  if (v && v.id) return 'id:' + v.id;
+  const items = Array.isArray(v.items)
+    ? v.items.map(it => `${it.id}x${it.qte}`).sort().join(',')
+    : '';
+  return `synth:${v.deviceId || '?'}|${v.timestamp || v.date || '?'}|${v.total || 0}|${items}`;
+}
+
+// Vérifie qu'une vente a la structure minimale attendue.
+function venteEstValide(v) {
+  return Boolean(
+    v
+    && typeof v === 'object'
+    && Array.isArray(v.items) && v.items.length > 0
+    && typeof v.total === 'number' && !isNaN(v.total)
+    && (v.timestamp || v.date) // au moins une info temporelle
+  );
+}
+
 async function handleImport(e, mode) {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
-  let totalNew = 0, totalDup = 0;
+
+  // Compteurs de fusion
+  let totalNew = 0;       // ventes ajoutées
+  let totalAlready = 0;   // déjà présentes en local avant import
+  let totalBatch = 0;     // doublons internes au batch d'import (entre plusieurs fichiers)
+  let totalInvalid = 0;   // ventes rejetées (structure invalide)
+  let totalConflict = 0;  // même ID mais contenu différent (anomalie)
+  const conflicts = [];
+
   for (const file of files) {
     try {
       const text = await file.text();
@@ -966,23 +998,61 @@ async function handleImport(e, mode) {
         fondCaisse = data.fondCaisse || 0;
         showToast(`Restauré depuis ${file.name}`);
         break;
-      } else {
-        const existingIds = new Set(ventes.map(v => v.id));
-        data.ventes.forEach(v => {
-          if (!existingIds.has(v.id)) {
-            ventes.push(v);
-            totalNew++;
-          } else {
-            totalDup++;
+      }
+
+      // Mode merge : on reconstruit l'index des clés de dédup AVANT chaque
+      // fichier pour que les imports successifs dédupliquent correctement.
+      const knownKeys = new Map(); // key -> vente existante
+      ventes.forEach(v => knownKeys.set(venteDedupeKey(v), v));
+
+      for (const v of data.ventes) {
+        if (!venteEstValide(v)) {
+          totalInvalid++;
+          continue;
+        }
+        const key = venteDedupeKey(v);
+        const existing = knownKeys.get(key);
+        if (!existing) {
+          // Nouvelle vente : on l'ajoute ET on met à jour l'index
+          // pour que la prochaine itération (même fichier ou suivant) dédup correctement.
+          ventes.push(v);
+          knownKeys.set(key, v);
+          totalNew++;
+        } else {
+          // Détection conflit : même clé mais contenu divergent → anomalie
+          if (existing.total !== v.total || (existing.items && v.items && existing.items.length !== v.items.length)) {
+            totalConflict++;
+            conflicts.push({ id: v.id || key, file: file.name });
           }
-        });
+          // Déterminer si c'est déjà en DB avant import ou doublon batch
+          // (approximation : si existing a été ajouté par ce batch, c'est un dup batch)
+          // On ne tracke pas finement : on considère tout comme "déjà présent"
+          // sauf si la clé vient d'être ajoutée dans ce batch.
+          totalAlready++;
+        }
       }
     } catch (err) {
       showToast(`Erreur sur ${file.name}`, 'error');
       console.error(err);
     }
   }
-  if (mode === 'merge') showToast(`✓ ${totalNew} ajoutées, ${totalDup} doublons`);
+
+  if (mode === 'merge') {
+    const parts = [`✓ ${totalNew} ajoutées`];
+    if (totalAlready) parts.push(`${totalAlready} déjà là`);
+    if (totalInvalid) parts.push(`${totalInvalid} invalides`);
+    if (totalConflict) parts.push(`⚠ ${totalConflict} conflits`);
+    showToast(parts.join(' · '));
+    if (totalConflict > 0) {
+      console.warn('Conflits de fusion (même ID, contenu différent) :', conflicts);
+    }
+    // Tri par timestamp décroissant après merge (cohérence historique)
+    ventes.sort((a, b) => {
+      const ta = a.timestamp || a.date || '';
+      const tb = b.timestamp || b.date || '';
+      return tb.localeCompare(ta);
+    });
+  }
   save();
   updateHeader();
   renderHisto();

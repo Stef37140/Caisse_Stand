@@ -1,147 +1,84 @@
-# 🐛 Bugs résolus
+# REX — Pending Learnings
 
-Historique des bugs rencontrés au cours du développement et des fixes appliqués. À consulter avant toute refonte pour ne pas réintroduire des problèmes connus.
+> Fichier de synchronisation cross-workstation pour Claude Code.
+> Pattern inspiré de `Trames_METCal/REX/PENDING_LEARNINGS.md`.
 
----
+## Usage
 
-## V2 → V2.1
+Ce fichier sert de **bridge** entre les sessions Claude Code sur différents postes (PC maison, PC travail, laptop…). Il centralise les apprentissages, patterns, pièges et décisions qui émergent en cours de développement mais qui ne sont pas encore intégrés dans les fichiers de doc permanents (`CLAUDE.md`, `docs/`).
 
-### Bug #1 : Stock pas décrémenté visuellement à l'ajout au panier
-
-**Symptôme** : l'utilisateur tape sur un produit pour l'ajouter au panier, mais l'affichage du stock à côté du bouton reste identique. Si on ajoute 5 fois le même produit avec un stock de 3, l'UI laisse faire sans bloquer.
-
-**Cause** :
-1. `renderCaisse()` n'était pas appelée après `ajouterAuPanier()`, donc la vue ne se mettait à jour qu'à l'encaissement effectif.
-2. Même si elle avait été appelée, elle affichait `p.stock` (stock réel), qui ne bouge qu'à la finalisation de la vente.
-
-**Fix** :
-- Introduction de `stockDispo(produitId)` qui calcule `p.stock − quantité dans panier`
-- Appel de `renderCaisse()` après chaque mutation du panier (`ajouterAuPanier`, `viderPanier`, `finaliserVente`)
-- Affichage de `stockDispo(id)` partout dans la grille caisse
-- Blocage de l'ajout si `stockDispo(id) <= 0` avec toast d'erreur
-
-**Leçon** : quand on a un état "en cours" (panier) distinct de l'état "validé" (stock réel), il faut exposer les deux niveaux via des helpers dédiés.
+**Workflow** :
+1. Au début d'une session, Claude Code lit ce fichier
+2. Pendant la session, ajoute les nouveaux apprentissages sous la section "⏳ En attente de validation"
+3. À la fin de la session (ou au commit), l'utilisateur valide les apprentissages pertinents → migration vers les docs permanentes → nettoyage du fichier
+4. `git push` → les autres postes récupèrent le fichier mis à jour au prochain `git pull`
 
 ---
 
-### Bug #2 : Boutons Bilan inopérants sur mobile
+## ⏳ En attente de validation
 
-**Symptôme** : les boutons "Définir fond de caisse", "Faire le comptage", "Nouvelle session" ne produisent aucun effet quand on tape dessus sur un iPhone. Aucune modal ne s'ouvre, aucun message d'erreur. Les mêmes boutons fonctionnent parfois sur desktop.
+*(Ajouter ici les apprentissages de la session en cours)*
 
-**Cause racine** : les fonctions natives JavaScript **`prompt()` et `confirm()`** sont **bloquées silencieusement par Safari iOS** dans plusieurs contextes :
-- Mode PWA standalone (app installée sur l'écran d'accueil)
-- Ouverture en `file://` direct
-- Certaines iframes
-- Parfois en navigation privée
+### Exemple de format
 
-Et sans lancer d'exception. Le clic est enregistré, la fonction est appelée, mais `prompt`/`confirm` retournent immédiatement `null` ou `false`, donc la logique qui suit ne s'exécute pas.
-
-**Fix** :
-- Création d'une modal HTML custom **`genModal()`** qui reproduit les fonctionnalités de `prompt` et `confirm` avec des éléments DOM
-- **Suppression totale de tous les `prompt()` et `confirm()`** du code
-- Pattern async via callback `onOk` :
-  ```javascript
-  genModal({
-    title: '...',
-    message: '...',
-    input: true,
-    onOk: () => { /* logique métier */ }
-  });
-  ```
-
-**Leçon cruciale** : **ne jamais utiliser `prompt()`, `confirm()` ou `alert()` dans une PWA** destinée à être utilisée sur mobile. Toujours faire des modals HTML custom.
-
-**À ne pas réintroduire** : si un nouveau développeur (ou une IA) écrit du code qui réintroduit `prompt()`, ça reviendra péter sur mobile. Ajouter éventuellement un lint rule ou un test.
+```
+- **[Date] Catégorie** : Description du pattern, bug, découverte, décision
+  - Contexte :
+  - Solution / ce qu'il faut retenir :
+  - À intégrer dans : CLAUDE.md / docs/ARCHITECTURE.md / docs/BUGS_RESOLUS.md / ROADMAP.md
+```
 
 ---
 
-### Bug #3 : Event handlers onclick inline sur contenu dynamique
+## ✅ Apprentissages validés (historique récent)
 
-**Symptôme** : dans la V2, certains boutons générés dans `renderCaisse()` via `innerHTML` avec des `onclick="fn('arg')"` ne déclenchaient pas toujours leur handler, surtout après plusieurs re-renders.
+*(Déplacer ici avant archivage, puis nettoyer régulièrement)*
 
-**Cause** : les `onclick` inline sur des éléments générés par `innerHTML` peuvent poser des problèmes de scoping (fonctions pas trouvées dans le scope global), d'échappement de caractères (apostrophes dans les noms comme "Singes de la sagesse"), et de performance (un handler par bouton).
+### Session initiale (bascule Claude.ai → Claude Code)
 
-**Fix** :
-- Passage à **event delegation globale** sur `document` :
-  ```javascript
-  document.addEventListener('click', (e) => {
-    const target = e.target.closest('[data-action]');
-    if (!target) return;
-    const action = target.dataset.action;
-    if (action === 'addpanier') ajouterAuPanier(parseInt(target.dataset.id));
-    // ...
-  });
-  ```
-- Utilisation de `data-*` attributes pour passer les paramètres
-- Encodage via `encodeURIComponent` pour les valeurs contenant des caractères spéciaux (noms de modèles)
-- Un seul listener pour tous les clics, quelle que soit la profondeur ou le timing de génération
-
-**Leçon** : pour tout contenu généré dynamiquement, event delegation > handlers inline.
+- **Pièges mobile PWA** : `prompt()` et `confirm()` natifs JavaScript sont bloqués silencieusement sur Safari iOS en mode PWA/standalone. **Ne jamais les utiliser.** Toujours passer par des modals HTML custom.
+  - Déjà documenté dans : `docs/BUGS_RESOLUS.md` (Bug #2)
+- **Téléchargement fichiers** : pour `a.click()` programmatique, le `<a>` doit être attaché au DOM avant le clic, sinon certains navigateurs l'ignorent.
+  - Déjà documenté dans : `docs/BUGS_RESOLUS.md` (Bug #4)
+- **Stock disponible vs stock réel** : dans une app de caisse avec panier, toujours séparer l'état "réservé en panier" de l'état "stock final". Exposer via helper `stockDispo(id)`.
+  - Déjà documenté dans : `docs/ARCHITECTURE.md`
+- **Event delegation > onclick inline** : pour le contenu généré dynamiquement, event delegation sur `document` est plus fiable et plus performant.
+  - Déjà documenté dans : `docs/ARCHITECTURE.md`
 
 ---
 
-### Bug #4 : Export JSON/CSV non fiable
+## 📌 Décisions d'architecture à respecter
 
-**Symptôme** : parfois le téléchargement de fichier ne se déclenche pas, surtout sur Firefox ou certains Safari. Aucun message d'erreur.
+Principes structurants qui ne doivent pas être remis en cause sans discussion explicite :
 
-**Cause** : le pattern `a.click()` sur un élément `<a>` créé dynamiquement **nécessite que l'élément soit attaché au DOM** avant l'appel à `click()` sur certains navigateurs. Sinon, le clic est ignoré silencieusement.
-
-**Fix** : fonction `downloadBlob()` centralisée qui :
-1. Crée le Blob
-2. Crée l'URL via `URL.createObjectURL`
-3. Crée le `<a>` avec `href`, `download`
-4. **`document.body.appendChild(a)`** ← étape critique
-5. `a.click()`
-6. `document.body.removeChild(a)`
-7. `setTimeout(() => URL.revokeObjectURL(url), 1000)` pour libérer la mémoire
-8. Retour `true`/`false` pour que l'appelant sache si ça a marché
-9. Try/catch englobant avec toast d'erreur
-
-**Leçon** : ne jamais faire confiance aux raccourcis "qui marchent sur Chrome desktop". Toujours tester sur Safari iOS et Firefox avant de considérer un feature comme fini.
+1. **Single file `index.html`** pour V2.x — refactoring modulaire prévu en V3.5 seulement
+2. **Pas de build tool, pas de framework** — vanilla JS + Tailwind CDN
+3. **Pas de backend, pas de compte** — 100 % local
+4. **localStorage** pour la persistance — migration IndexedDB seulement si besoin (images, très grand volume)
+5. **Compatible iOS Safari en priorité** — c'est le navigateur qui casse le plus
+6. **Event delegation + data-action** pour tous les handlers sur contenu dynamique
+7. **Modals HTML > prompt/confirm natifs** — toujours
+8. **Toast non-bloquant** pour les feedbacks d'action (pas d'alert)
 
 ---
 
-### Bug #5 : ID de vente collisionnable entre appareils
+## 🔄 Procédure de mise à jour
 
-**Symptôme (potentiel, évité)** : si deux téléphones génèrent un ID basé uniquement sur `Date.now()`, il est théoriquement possible d'avoir deux ventes avec le même ID, ce qui fait échouer la déduplication lors de la fusion.
+Quand tu termines une session de travail, avant le `git commit` :
 
-**Fix préventif** : ID vente = `${deviceId}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`. La combinaison des trois garantit l'unicité inter-appareils.
-
-**Leçon** : pour tout identifiant destiné à être fusionné entre sources multiples, inclure un composant device + un composant random en plus du timestamp.
-
----
-
-## Bugs V0/V1 résolus en V1
-
-### Bouton "Ajouter un produit" dans Stock inopérant
-
-**Cause** : utilisation de `prompt()` natifs en cascade (`prompt('nom?'); prompt('prix?'); prompt('stock?')`), qui sur mobile soit :
-- S'enchaînent trop vite et se font annuler
-- Sont bloqués (voir Bug #2)
-- N'acceptent que du texte (pas idéal pour les nombres)
-
-**Fix** : remplacement par une modal HTML `<div id="modal-produit">` avec `<select>` pour catégorie/modèle/taille et `<input type="number">` pour prix/stock.
+1. Relire la section "⏳ En attente de validation"
+2. Pour chaque entrée :
+   - Si pertinente → la migrer vers le doc approprié
+   - Si obsolète ou redondante → la supprimer
+   - Si importante mais pas encore claire → la laisser en attente
+3. Mettre à jour "✅ Apprentissages validés" si besoin
+4. Commit avec message `docs: update REX/PENDING_LEARNINGS`
 
 ---
 
-## Bugs potentiels à surveiller (non encore survenus)
+## 💡 Astuces pour Claude Code
 
-### Quota localStorage dépassé
-
-**Symptôme attendu** : `save()` lance une exception `QuotaExceededError` quand on dépasse ~5 Mo.
-
-**Protection en place** : try/catch dans `save()` avec toast d'erreur.
-
-**Solution long terme** : migration IndexedDB, surtout si on ajoute des images base64.
-
-### Timezone / changement d'heure
-
-**Risque** : les timestamps ISO sont en UTC mais les dates affichées sont en timezone locale. Si un marché démarre à 23h30 et se termine à 01h, la "date" affichée change en cours de session.
-
-**Statut** : non critique pour l'usage actuel, mais à surveiller si on fait des statistiques multi-jours.
-
-### Concurrence multi-onglets
-
-**Risque** : si l'utilisateur ouvre l'app dans deux onglets du même navigateur, les modifications ne sont pas synchronisées.
-
-**Statut** : pas de fix actuellement. Solution future = écouter l'event `storage` sur `window`.
+Quand tu lis ce fichier au début d'une session :
+- Prendre connaissance des apprentissages récents pour éviter de refaire les mêmes erreurs
+- Si tu rencontres un bug ou découverte non documenté ici, l'y ajouter au fur et à mesure
+- Ne pas hésiter à proposer à l'utilisateur de "valider" les apprentissages en fin de session pour les migrer vers les docs permanentes

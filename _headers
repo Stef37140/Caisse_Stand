@@ -1,0 +1,49 @@
+# Cloudflare Pages : headers personnalisés
+# https://developers.cloudflare.com/pages/configuration/headers/
+#
+# Objectif : empêcher le cache HTTP des fichiers "shell" (index.html, sw.js,
+# manifest.json) pour que les utilisateurs récupèrent toujours la dernière
+# version au rechargement. Sans ça, Cloudflare + navigateur peuvent servir
+# une version obsolète de sw.js, ce qui bloque les mises à jour PWA —
+# particulièrement problématique sur iOS Safari.
+#
+# Les ressources statiques (icônes, vendor/*) gardent un cache long : elles
+# sont versionnées via le CACHE_VERSION du service worker.
+
+# Service worker : JAMAIS en cache HTTP. Le navigateur doit toujours le
+# re-télécharger pour détecter les nouvelles versions.
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+  Service-Worker-Allowed: /
+
+# Manifest : validation à chaque chargement pour que les modifs (icônes,
+# theme_color, etc.) soient prises en compte rapidement.
+/manifest.json
+  Cache-Control: public, max-age=0, must-revalidate
+
+# HTML principal : revalidation systématique. Le SW le cache quand même
+# dans son cache interne (app-shell), c'est ce cache-là qui est invalidé
+# par le bump de CACHE_VERSION.
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Guide utilisateur en markdown : peut être servi par GitHub Pages aussi
+/GUIDE_UTILISATEUR.md
+  Cache-Control: public, max-age=3600
+
+# Vendor libs : cache long (1 an), versionnées via le nom dans CACHE_VERSION
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Icônes PWA : cache long, elles changent rarement
+/icons/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# CORS headers pour les Functions (ajout de sécurité)
+/api/*
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, POST, OPTIONS
+  Access-Control-Allow-Headers: Content-Type, Authorization

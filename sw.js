@@ -11,7 +11,7 @@
  * "Nouvelle version disponible", évitant de casser une session en cours.
  */
 
-const CACHE_VERSION = 'caisse-v3.2.0';
+const CACHE_VERSION = 'caisse-v3.2.1';
 const APP_SHELL = [
   './',
   './index.html',

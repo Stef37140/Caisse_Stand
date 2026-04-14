@@ -197,7 +197,9 @@
       <div><strong>Cet appareil :</strong> <span id="device-id-full" class="font-mono"></span></div>
       <div class="mt-1"><strong>Dernière sauvegarde :</strong> <span id="last-backup">jamais</span></div>
       <div class="mt-1"><strong>Mode :</strong> <span id="display-mode" class="font-mono">navigateur</span></div>
+      <div class="mt-1"><strong>Version :</strong> <span class="font-mono">v3.2.1</span></div>
       <button id="btn-rename-device" class="mt-2 bg-slate-600 text-white px-3 py-1 rounded text-xs">Renommer l'appareil</button>
+      <button id="btn-force-update" class="mt-2 ml-2 bg-amber-600 text-white px-3 py-1 rounded text-xs">🧹 Forcer la mise à jour</button>
     </div>
   </section>
 
@@ -2279,6 +2281,36 @@ document.getElementById('btn-import-json').addEventListener('click', demarrerImp
 document.getElementById('btn-restore-json').addEventListener('click', demarrerImportRestore);
 document.getElementById('btn-rename-device').addEventListener('click', renommerAppareil);
 
+// Bouton d'urgence "Forcer la mise à jour" — utile quand un tel reste bloqué
+// sur une vieille version malgré les mécanismes automatiques (iOS Safari)
+document.getElementById('btn-force-update').addEventListener('click', () => {
+  genModal({
+    title: '🧹 Forcer la mise à jour',
+    message: 'Vide tous les caches et recharge. Les données locales (stock, ventes, config) sont préservées. Continuer ?',
+    okLabel: 'Oui, forcer',
+    onOk: async () => {
+      fermerGenModal();
+      try {
+        // Vider tous les Cache Storage (CacheStorage API)
+        if ('caches' in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map(n => caches.delete(n)));
+        }
+        // Désenregistrer tous les service workers
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+        }
+      } catch(e) {
+        console.warn('Force update:', e);
+      }
+      // Reload avec bypass cache (le true = forceReload, deprecated mais
+      // encore accepté par de nombreux navigateurs, sinon juste reload)
+      window.location.reload();
+    }
+  });
+});
+
 // QR sync
 document.getElementById('btn-qr-show').addEventListener('click', ouvrirQRShow);
 document.getElementById('btn-qr-show-close').addEventListener('click', fermerQRShow);
@@ -2397,9 +2429,18 @@ showInstallCardIfRelevant();
 // --- Service worker : registration + update flow ---
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').then((reg) => {
-      // Vérifie périodiquement les mises à jour (toutes les heures)
+    // updateViaCache: 'none' → le navigateur ne doit JAMAIS servir sw.js
+    // depuis son cache HTTP. Crucial pour iOS Safari qui autrement peut
+    // rester bloqué sur une vieille version du SW pendant des jours.
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then((reg) => {
+      // Check immédiat au chargement (en plus de la vérif horaire)
+      reg.update().catch(() => {});
+      // Vérifie aussi périodiquement (toutes les heures)
       setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+      // Et à chaque retour de visibilité (utile quand on garde l'app ouverte)
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) reg.update().catch(() => {});
+      });
 
       // Nouvelle version détectée (un SW en "installing" attend en "waiting")
       reg.addEventListener('updatefound', () => {

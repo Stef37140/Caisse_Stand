@@ -12,6 +12,30 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [3.4.1] — Coupures cash en mode additif
+
+### Modifié
+- **Boutons coupures cash deviennent additifs** au lieu de remplacer la
+  valeur. Cas d'usage typique : le client donne 2×5 € + 10 € pour un
+  achat de 20 € → on tape `+5` `+5` `+10` et l'app affiche le rendu en
+  temps réel à chaque empilage. Avant : il fallait taper `5` qui mettait
+  5, puis `10` qui mettait 10 (perte des 5 précédents).
+- **Labels mis à jour** : `5 €` → `+5`, `10 €` → `+10`, etc. (signe
+  explicite pour rappeler l'addition).
+- **Nouveau bouton ↺** (rouge clair) à côté des coupures pour remettre
+  le champ à 0. Utile pour repartir d'une feuille blanche quand on
+  veut empiler les coupures (sans avoir à effacer manuellement le
+  pré-remplissage du total dû).
+- Helper `fmt(n)` : affiche les entiers proprement (`20` au lieu de
+  `20.00`) tout en gardant 2 décimales pour les valeurs non entières
+  (`19.50`). Arrondi à 2 décimales pour éviter les erreurs flottants.
+
+### Technique
+- CACHE_VERSION v3.4.0 → v3.4.1
+- Version affichée bumpée
+
+---
+
 ## [3.4.0] — Trio UX de confort (recherche stock, seuil alerte, coupures cash)
 
 Trois petites features à grand impact pour le quotidien stand, sans ajouter

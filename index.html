@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>Caisse Stand v3.3</title>
+<title>Caisse Stand v3.4</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="./vendor/qrcode.min.js"></script>
 <script src="./vendor/jsQR.min.js"></script>
@@ -95,6 +95,18 @@
       <button id="btn-ajouter-produit" class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-bold">+ Ajouter un produit</button>
       <button id="btn-gerer-taxo" class="bg-slate-700 text-white px-3 py-3 rounded-lg font-semibold text-sm" title="Gérer catégories, modèles, tailles">⚙ Référentiel</button>
     </div>
+    <div class="flex gap-2 mb-2 items-center">
+      <div class="flex-1 relative">
+        <input type="search" id="stock-search" placeholder="🔍 Rechercher (catégorie, modèle, taille)"
+               class="w-full border rounded-lg pl-3 pr-8 py-2 text-sm">
+        <button id="btn-stock-search-clear" class="hidden absolute right-1 top-1 bottom-1 w-6 text-slate-500">✕</button>
+      </div>
+      <label class="text-xs text-slate-600 whitespace-nowrap flex items-center gap-1">
+        Alerte si ≤
+        <input type="number" id="stock-faible-seuil" min="0" max="99" class="w-10 border rounded px-1 py-1 text-center text-sm" value="3">
+      </label>
+    </div>
+    <div id="stock-meta" class="text-xs text-slate-500 mb-2"></div>
     <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg mb-3">
       <h3 class="font-bold text-sm text-amber-900 mb-1">📊 Import / Export stock (CSV)</h3>
       <p class="text-xs text-amber-800 mb-2">Prépare l'inventaire dans Excel / LibreOffice puis importe-le pour gagner du temps en début de marché.</p>
@@ -207,7 +219,7 @@
       <div><strong>Cet appareil :</strong> <span id="device-id-full" class="font-mono"></span></div>
       <div class="mt-1"><strong>Dernière sauvegarde :</strong> <span id="last-backup">jamais</span></div>
       <div class="mt-1"><strong>Mode :</strong> <span id="display-mode" class="font-mono">navigateur</span></div>
-      <div class="mt-1"><strong>Version :</strong> <span class="font-mono">v3.3.0</span></div>
+      <div class="mt-1"><strong>Version :</strong> <span class="font-mono">v3.4.0</span></div>
       <button id="btn-rename-device" class="mt-2 bg-slate-600 text-white px-3 py-1 rounded text-xs">Renommer l'appareil</button>
       <button id="btn-force-update" class="mt-2 ml-2 bg-amber-600 text-white px-3 py-1 rounded text-xs">🧹 Forcer la mise à jour</button>
     </div>
@@ -267,6 +279,13 @@
     <p id="gen-message" class="text-sm text-slate-600 mb-3"></p>
     <div id="gen-input-wrap" class="hidden mb-3">
       <input type="number" id="gen-input" class="w-full border rounded-lg px-3 py-3 text-lg" inputmode="decimal">
+      <div id="gen-coupures" class="hidden mt-2 grid grid-cols-5 gap-1">
+        <button type="button" data-coupure="5"   class="gen-coup bg-slate-200 py-2 rounded text-sm font-semibold">5 €</button>
+        <button type="button" data-coupure="10"  class="gen-coup bg-slate-200 py-2 rounded text-sm font-semibold">10 €</button>
+        <button type="button" data-coupure="20"  class="gen-coup bg-slate-200 py-2 rounded text-sm font-semibold">20 €</button>
+        <button type="button" data-coupure="50"  class="gen-coup bg-slate-200 py-2 rounded text-sm font-semibold">50 €</button>
+        <button type="button" data-coupure="100" class="gen-coup bg-slate-200 py-2 rounded text-sm font-semibold">100 €</button>
+      </div>
     </div>
     <div id="gen-extra" class="hidden mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
       <div class="text-sm text-green-800">À rendre au client :</div>
@@ -950,10 +969,12 @@ function genModal(opts) {
     wrap.classList.add('hidden');
   }
   const extra = document.getElementById('gen-extra');
+  const coup  = document.getElementById('gen-coupures');
   if (opts.showRendu) {
     extra.classList.remove('hidden');
+    coup.classList.remove('hidden');
     document.getElementById('gen-rendu').textContent = '0,00 €';
-    inp.oninput = () => {
+    const recompute = () => {
       const donne = parseFloat(inp.value);
       const rendu = isNaN(donne) ? 0 : donne - opts.totalDu;
       const el = document.getElementById('gen-rendu');
@@ -965,8 +986,19 @@ function genModal(opts) {
         el.className = 'text-3xl font-bold text-green-900';
       }
     };
+    inp.oninput = recompute;
+    // Boutons coupures rapides : remplacent la valeur (pas d'addition pour
+    // rester prévisible — la plupart du temps le client donne UNE coupure)
+    coup.querySelectorAll('.gen-coup').forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        inp.value = btn.dataset.coupure;
+        recompute();
+      };
+    });
   } else {
     extra.classList.add('hidden');
+    coup.classList.add('hidden');
     inp.oninput = null;
   }
   document.getElementById('gen-ok').textContent = opts.okLabel || 'OK';
@@ -1227,15 +1259,53 @@ function updateHeader() {
 // ============================
 // STOCK
 // ============================
+// Seuil de stock faible (0 = désactivé). Persisté localement, pas synchronisé
+// (c'est une préférence d'affichage propre à chaque appareil).
+let stockFaibleSeuil = parseInt(localStorage.getItem('caisse_stock_faible') || '3', 10);
+
+// Terme de recherche courant dans l'onglet Stock.
+let stockSearch = '';
+
+// Normalise pour recherche insensible à la casse et aux accents.
+function normalizeSearch(s) {
+  return (s || '').toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 function renderStock() {
   const actifs = produitsActifs();
-  const cats = [...new Set(actifs.map(p => p.categorie))];
+  const termeN = normalizeSearch(stockSearch);
+  const filtres = termeN
+    ? actifs.filter(p => normalizeSearch(`${p.categorie} ${p.modele} ${p.taille}`).includes(termeN))
+    : actifs;
+
+  // Résumé pour le header de la recherche
+  const totalActifs = actifs.length;
+  const nbFiltres = filtres.length;
+  const meta = document.getElementById('stock-meta');
+  if (meta) {
+    meta.textContent = termeN
+      ? `${nbFiltres} / ${totalActifs} produits`
+      : `${totalActifs} produits`;
+  }
+
+  const cats = [...new Set(filtres.map(p => p.categorie))];
   let html = '';
   cats.forEach(cat => {
     html += `<h3 class="font-bold text-sm text-slate-700 mt-3 mb-1">${cat}</h3>`;
-    const items = actifs.filter(p => p.categorie === cat);
-    html += items.map(p => `
-      <div data-action="editprod" data-id="${p.id}" class="flex items-center gap-2 bg-slate-50 p-2 rounded-lg active:bg-slate-200 cursor-pointer">
+    const items = filtres.filter(p => p.categorie === cat);
+    html += items.map(p => {
+      const stk = stockEffectif(p);
+      // Classes de coloration selon seuil : rouge à 0, ambre si ≤ seuil
+      let stkClass = '';
+      let ligneClass = 'bg-slate-50';
+      if (stk === 0) { stkClass = 'text-red-600'; ligneClass = 'bg-red-50'; }
+      else if (stockFaibleSeuil > 0 && stk <= stockFaibleSeuil) {
+        stkClass = 'text-amber-700';
+        ligneClass = 'bg-amber-50';
+      }
+      return `
+      <div data-action="editprod" data-id="${p.id}" class="flex items-center gap-2 ${ligneClass} p-2 rounded-lg active:bg-slate-200 cursor-pointer">
         <div class="${categorieCouleur(cat)} w-2 h-10 rounded"></div>
         <div class="text-xl">${modeleIcone(p.modele)}</div>
         <div class="flex-1">
@@ -1243,10 +1313,11 @@ function renderStock() {
           <div class="text-xs text-slate-500">${p.prix} €</div>
         </div>
         <button data-action="stockminus" data-id="${p.id}" class="bg-slate-200 w-8 h-8 rounded font-bold">−</button>
-        <span class="w-8 text-center font-bold ${stockEffectif(p) === 0 ? 'text-red-600' : ''}">${stockEffectif(p)}</span>
+        <span class="w-8 text-center font-bold ${stkClass}">${stk}</span>
         <button data-action="stockplus" data-id="${p.id}" class="bg-slate-200 w-8 h-8 rounded font-bold">+</button>
       </div>
-    `).join('');
+    `;
+    }).join('');
   });
   document.getElementById('liste-stock').innerHTML = html || '<div class="text-slate-400 text-center py-8">Aucun produit</div>';
 }
@@ -2539,6 +2610,36 @@ document.getElementById('panier-toggle-zone').addEventListener('click', togglePa
 document.getElementById('btn-annuler').addEventListener('click', annulerDerniere);
 document.getElementById('btn-vider').addEventListener('click', viderPanier);
 document.getElementById('btn-ajouter-produit').addEventListener('click', ouvrirAjoutProduit);
+
+// Recherche dans Stock (filtre en direct) + clear
+(() => {
+  const input = document.getElementById('stock-search');
+  const clear = document.getElementById('btn-stock-search-clear');
+  input.addEventListener('input', (e) => {
+    stockSearch = e.target.value || '';
+    clear.classList.toggle('hidden', !stockSearch);
+    renderStock();
+  });
+  clear.addEventListener('click', () => {
+    stockSearch = '';
+    input.value = '';
+    clear.classList.add('hidden');
+    input.focus();
+    renderStock();
+  });
+})();
+
+// Seuil stock faible — persistance + re-render à chaque modif
+(() => {
+  const seuilInput = document.getElementById('stock-faible-seuil');
+  seuilInput.value = stockFaibleSeuil;
+  seuilInput.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10);
+    stockFaibleSeuil = isNaN(v) ? 0 : Math.max(0, Math.min(99, v));
+    try { localStorage.setItem('caisse_stock_faible', stockFaibleSeuil); } catch(e) {}
+    renderStock();
+  });
+})();
 
 // Import / Export stock CSV
 document.getElementById('btn-stock-csv-template').addEventListener('click', downloadStockTemplate);

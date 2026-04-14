@@ -7,9 +7,47 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 ## [Unreleased]
 
 ### À venir
-- Images produits (remplacement des emojis) — V3.4
-- Archivage des sessions clôturées — V3.5
-- Rendu monnaie avancé avec coupures rapides — V3.6
+- Images produits (remplacement des emojis) — V3.5
+- Archivage des sessions clôturées — V3.6
+
+---
+
+## [3.4.0] — Trio UX de confort (recherche stock, seuil alerte, coupures cash)
+
+Trois petites features à grand impact pour le quotidien stand, sans ajouter
+de complexité conceptuelle.
+
+### Ajouté
+
+- **🔍 Recherche dans Stock** : un champ de recherche en haut de l'onglet
+  filtre en direct la liste. Insensible à la casse ET aux accents
+  (normalisation NFD Unicode → "Médium" matche "medium"). Cherche dans
+  catégorie + modèle + taille. Bouton × pour vider. Un indicateur
+  "X / Y produits" montre le nb filtré. Utile dès qu'on dépasse 20-30 produits.
+- **⚠️ Indicateur stock faible** : seuil configurable (3 par défaut,
+  0 pour désactiver) via un champ inline à côté de la recherche.
+  Produit à 0 → ligne rouge + chiffre rouge (déjà existant). Produit
+  entre 1 et seuil → ligne ambre + chiffre ambre. Seuil persisté en
+  localStorage `caisse_stock_faible`, **par appareil** (préférence
+  d'affichage, pas synchronisée entre tels).
+- **💵 Coupures rapides** au paiement cash : 5 boutons (5, 10, 20, 50,
+  100 €) sous le champ de saisie dans la modal d'encaissement. Tap
+  remplace la valeur (pas d'addition, pour rester prévisible) et
+  recalcule le rendu instantanément. Accélère ~30-40 % des paiements
+  où le client donne une coupure ronde.
+
+### Modifié
+
+- `renderStock` filtre désormais via `stockSearch` et applique les
+  classes de seuil. Toujours performant (< 200 produits).
+- `genModal` avec `showRendu: true` affiche les coupures. En mode
+  autre (`showRendu: false`), les coupures sont cachées — pas de
+  régression sur les modals fond de caisse / comptage / rendu produit.
+
+### Technique
+
+- CACHE_VERSION v3.3.0 → v3.4.0.
+- Title et version affichée bumpés.
 
 ---
 

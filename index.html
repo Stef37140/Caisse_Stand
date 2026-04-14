@@ -219,7 +219,7 @@
       <div><strong>Cet appareil :</strong> <span id="device-id-full" class="font-mono"></span></div>
       <div class="mt-1"><strong>Dernière sauvegarde :</strong> <span id="last-backup">jamais</span></div>
       <div class="mt-1"><strong>Mode :</strong> <span id="display-mode" class="font-mono">navigateur</span></div>
-      <div class="mt-1"><strong>Version :</strong> <span class="font-mono">v3.4.1</span></div>
+      <div class="mt-1"><strong>Version :</strong> <span class="font-mono">v3.4.2</span></div>
       <button id="btn-rename-device" class="mt-2 bg-slate-600 text-white px-3 py-1 rounded text-xs">Renommer l'appareil</button>
       <button id="btn-force-update" class="mt-2 ml-2 bg-amber-600 text-white px-3 py-1 rounded text-xs">🧹 Forcer la mise à jour</button>
     </div>
@@ -1223,12 +1223,15 @@ function encaisser(mode) {
   const total = panier.reduce((s,i) => s + i.qte * i.prix, 0);
   
   if (mode === 'cash') {
-    // Modal avec calcul rendu monnaie
+    // Modal avec calcul rendu monnaie. Champ démarre à 0 pour permettre
+    // d'empiler les coupures (+5, +10…) directement sans tap ↺ préalable.
+    // Si le client paie pile, l'utilisateur tape +X jusqu'à atteindre total
+    // (ou saisit directement le montant au clavier).
     genModal({
       title: `Encaissement cash : ${total} €`,
-      message: 'Montant donné par le client (laisser vide si appoint exact)',
+      message: 'Empile les coupures reçues du client (rendu en direct)',
       input: true,
-      inputValue: total,
+      inputValue: 0,
       showRendu: true,
       totalDu: total,
       okLabel: 'Valider',

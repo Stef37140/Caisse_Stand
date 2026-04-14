@@ -12,6 +12,22 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [3.4.2] — Champ cash démarre à 0
+
+### Modifié
+- Le champ d'encaissement cash s'ouvre désormais avec **0** au lieu d'être
+  pré-rempli avec le total dû. Permet d'empiler directement les coupures
+  reçues du client sans devoir taper `↺` à chaque vente.
+- Message de la modal mis à jour : "Empile les coupures reçues du client
+  (rendu en direct)".
+- Note : le champ reste éditable au clavier pour les cas où on connaît
+  d'avance le montant exact (`17,50` etc.).
+
+### Technique
+- CACHE_VERSION v3.4.1 → v3.4.2
+
+---
+
 ## [3.4.1] — Coupures cash en mode additif
 
 ### Modifié

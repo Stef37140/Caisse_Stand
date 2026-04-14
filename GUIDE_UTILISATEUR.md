@@ -34,7 +34,10 @@ Tu peux ajouter **plusieurs articles** avant de payer (tape plusieurs fois).
 
 ### Puis le paiement
 
-- **💵 CASH** → une fenêtre demande le montant donné par le client. L'app calcule automatiquement le rendu (vert si tu dois rendre, rouge si le client n'a pas donné assez)
+- **💵 CASH** → une fenêtre demande le montant donné par le client. L'app calcule automatiquement le rendu (vert si tu dois rendre, rouge si le client n'a pas donné assez).
+  - **Boutons coupures `+5` `+10` `+20` `+50` `+100`** : chaque tap **empile** la valeur. Si le client donne 2 × 5 € + 1 × 10 € pour 20 €, tape `+5`, `+5`, `+10` et le rendu se met à jour à chaque billet.
+  - **Bouton `↺`** : remet le champ à 0 (pratique pour repartir de zéro et compter les billets reçus).
+  - Le champ reste éditable manuellement pour les cas particuliers (`17,50`, `45`, etc.).
 - **💳 CB** → direct, pas de rendu à calculer
 
 ### Si tu te trompes
@@ -51,6 +54,8 @@ Tape la **barre du panier** en bas de l'écran pour la déplier. Tu as :
 
 Pour voir et ajuster ton inventaire.
 
+- **🔍 Recherche** : un champ en haut filtre la liste par catégorie / modèle / taille (insensible aux accents et à la casse). Pratique quand le catalogue s'étoffe.
+- **⚠️ Alerte stock faible** : à côté de la recherche, un champ "Alerte si ≤ N" (3 par défaut). Les produits à 0 apparaissent en **rouge**, ceux au-dessus de 0 mais ≤ seuil en **ambre**. Mets `0` pour désactiver. Le seuil est propre à chaque téléphone.
 - **Liste complète** de ce qu'il te reste, groupée par catégorie
 - Boutons **`+`** et **`−`** à droite pour ajuster rapidement (arrivage, cadeau, vol…)
 - Tape **sur une ligne** pour éditer le produit en détail (prix, modèle, taille, supprimer)

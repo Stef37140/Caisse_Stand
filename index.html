@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>Caisse Stand v3.2</title>
+<title>Caisse Stand v3.3</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="./vendor/qrcode.min.js"></script>
 <script src="./vendor/jsQR.min.js"></script>
@@ -95,6 +95,16 @@
       <button id="btn-ajouter-produit" class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-bold">+ Ajouter un produit</button>
       <button id="btn-gerer-taxo" class="bg-slate-700 text-white px-3 py-3 rounded-lg font-semibold text-sm" title="Gérer catégories, modèles, tailles">⚙ Référentiel</button>
     </div>
+    <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg mb-3">
+      <h3 class="font-bold text-sm text-amber-900 mb-1">📊 Import / Export stock (CSV)</h3>
+      <p class="text-xs text-amber-800 mb-2">Prépare l'inventaire dans Excel / LibreOffice puis importe-le pour gagner du temps en début de marché.</p>
+      <input type="file" id="input-stock-csv" accept=".csv,text/csv" class="hidden">
+      <div class="grid grid-cols-3 gap-2">
+        <button id="btn-stock-csv-template" class="bg-amber-500 text-white py-2 rounded-lg text-xs font-semibold">📄 Modèle</button>
+        <button id="btn-stock-csv-import"   class="bg-amber-600 text-white py-2 rounded-lg text-xs font-semibold">📥 Importer</button>
+        <button id="btn-stock-csv-export"   class="bg-amber-700 text-white py-2 rounded-lg text-xs font-semibold">📤 Exporter</button>
+      </div>
+    </div>
     <div id="liste-stock" class="space-y-2"></div>
   </section>
 
@@ -129,7 +139,7 @@
     <h3 class="font-bold text-sm text-slate-700 mb-2">Dernières ventes</h3>
     <div id="liste-ventes" class="space-y-1 text-xs max-h-60 overflow-y-auto scroll-area"></div>
     <div class="mt-4 grid grid-cols-2 gap-2">
-      <button id="btn-export-csv" class="bg-slate-700 text-white py-2 rounded-lg text-sm font-semibold">📥 Export CSV</button>
+      <button id="btn-export-csv" class="bg-slate-700 text-white py-2 rounded-lg text-sm font-semibold">📥 Export ventes CSV</button>
       <button id="btn-reset" class="bg-red-600 text-white py-2 rounded-lg text-sm font-semibold">🔄 Nouvelle session</button>
     </div>
   </section>
@@ -197,7 +207,7 @@
       <div><strong>Cet appareil :</strong> <span id="device-id-full" class="font-mono"></span></div>
       <div class="mt-1"><strong>Dernière sauvegarde :</strong> <span id="last-backup">jamais</span></div>
       <div class="mt-1"><strong>Mode :</strong> <span id="display-mode" class="font-mono">navigateur</span></div>
-      <div class="mt-1"><strong>Version :</strong> <span class="font-mono">v3.2.1</span></div>
+      <div class="mt-1"><strong>Version :</strong> <span class="font-mono">v3.3.0</span></div>
       <button id="btn-rename-device" class="mt-2 bg-slate-600 text-white px-3 py-1 rounded text-xs">Renommer l'appareil</button>
       <button id="btn-force-update" class="mt-2 ml-2 bg-amber-600 text-white px-3 py-1 rounded text-xs">🧹 Forcer la mise à jour</button>
     </div>
@@ -1487,9 +1497,266 @@ function exporterCSV() {
     csv += `${v.date || ''};${v.heure};${v.deviceLabel || ''};${cat};${mod};${taille};${i.qte};${i.prix};${i.qte*i.prix};${v.mode};${v.timestamp || ''}\n`;
   }));
   const stamp = new Date().toISOString().slice(0,10);
-  if (downloadBlob('\ufeff' + csv, `caisse_${stamp}.csv`, 'text/csv;charset=utf-8')) {
-    showToast('CSV exporté');
+  if (downloadBlob('\ufeff' + csv, `ventes_${stamp}.csv`, 'text/csv;charset=utf-8')) {
+    showToast('CSV ventes exporté');
   }
+}
+
+// ============================
+// IMPORT / EXPORT STOCK CSV
+// ============================
+
+// Parseur CSV tolérant : gère BOM UTF-8, séparateur ; ou , auto-détecté,
+// guillemets d'échappement standards ("" pour un guillemet dans la valeur).
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (lines.length < 2) return { headers: [], rows: [] };
+  // Détection du séparateur à partir de la 1re ligne
+  const firstLine = lines[0];
+  const sep = (firstLine.match(/;/g) || []).length >= (firstLine.match(/,/g) || []).length ? ';' : ',';
+  const splitLine = (line) => {
+    const out = []; let cur = ''; let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (c === sep && !inQ) {
+        out.push(cur); cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    out.push(cur);
+    return out;
+  };
+  const normalize = (h) => h.trim().toLowerCase()
+    .replace(/é|è|ê|ë/g, 'e').replace(/à|â/g, 'a').replace(/ô/g, 'o')
+    .replace(/[^a-z0-9]/g, '');
+  const headers = splitLine(lines[0]).map(normalize);
+  const rows = lines.slice(1).map(l => {
+    const vals = splitLine(l);
+    const row = {};
+    headers.forEach((h, i) => row[h] = (vals[i] || '').trim());
+    return row;
+  });
+  return { headers, rows };
+}
+
+// Génère un CSV modèle prêt à être téléchargé et édité par l'utilisateur
+function downloadStockTemplate() {
+  const csv = '\ufeff' + [
+    'categorie;modele;taille;prix;stock',
+    'T-Shirt;Loup;M;20;5',
+    'T-Shirt;Loup;L;20;5',
+    'Pull;Tiki;L;35;3',
+    'Tote bag;Mandala;Unique;15;10',
+    'Body;Lion;3 mois;18;4',
+  ].join('\n') + '\n';
+  if (downloadBlob(csv, 'modele_stock.csv', 'text/csv;charset=utf-8')) {
+    showToast('Modèle CSV téléchargé');
+  }
+}
+
+// Exporte le stock actuel (produits actifs) au même format que l'import
+function exporterStockCSV() {
+  const actifs = produitsActifs();
+  if (actifs.length === 0) { showToast('Aucun produit à exporter', 'error'); return; }
+  let csv = 'categorie;modele;taille;prix;stock\n';
+  actifs.forEach(p => {
+    const stock = stockEffectif(p); // on exporte le stock actuellement dispo, pas la baseline
+    const esc = (v) => {
+      const s = String(v);
+      return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    csv += `${esc(p.categorie)};${esc(p.modele)};${esc(p.taille)};${p.prix};${stock}\n`;
+  });
+  const stamp = new Date().toISOString().slice(0,10);
+  if (downloadBlob('\ufeff' + csv, `stock_${stamp}.csv`, 'text/csv;charset=utf-8')) {
+    showToast('Stock exporté en CSV');
+  }
+}
+
+// S'assure que la taxonomie contient les items nécessaires pour un CSV.
+// Crée à la volée ce qui manque, avec couleur libre / emoji 👕 par défaut.
+function ensureTaxonomyForImport(cat, modele, taille, report) {
+  const now = nowIso();
+  let changed = false;
+  if (cat && !taxonomie.categories.find(c => c.nom === cat && !c.deletedAt)) {
+    const usedColors = new Set(categoriesActives().map(c => c.couleur));
+    const availableColor = PALETTE_COULEURS.find(c => !usedColors.has(c.cls)) || PALETTE_COULEURS[0];
+    taxonomie.categories.push({ nom: cat, couleur: availableColor.cls, lastModified: now });
+    report.categoriesCrees++; changed = true;
+  }
+  if (modele && !taxonomie.modeles.find(m => m.nom === modele && !m.deletedAt)) {
+    taxonomie.modeles.push({ nom: modele, icone: '👕', lastModified: now });
+    report.modelesCrees++; changed = true;
+  }
+  if (taille && !taxonomie.tailles.find(t => t.nom === taille && !t.deletedAt)) {
+    const maxOrdre = Math.max(0, ...taxonomie.tailles.map(t => t.ordre || 0));
+    taxonomie.tailles.push({ nom: taille, ordre: maxOrdre + 1, lastModified: now });
+    report.taillesCrees++; changed = true;
+  }
+  return changed;
+}
+
+// Applique l'import. mode : 'merge' (ajouter/MAJ) | 'replace' (tombstone tout puis ajouter)
+function appliquerImportStockCSV(rows, mode) {
+  const report = { ajoutes: 0, maj: 0, remplaces: 0, errors: 0,
+                   categoriesCrees: 0, modelesCrees: 0, taillesCrees: 0 };
+  const now = nowIso();
+
+  if (mode === 'replace') {
+    produits.forEach(p => {
+      if (!p.deletedAt) {
+        p.deletedAt = now;
+        p.lastModified = now;
+        report.remplaces++;
+      }
+    });
+  }
+
+  // Helpers pour tolérer plusieurs orthographes de headers
+  const getField = (row, ...keys) => {
+    for (const k of keys) { if (row[k] !== undefined && row[k] !== '') return row[k]; }
+    return '';
+  };
+
+  for (const row of rows) {
+    const cat    = getField(row, 'categorie', 'category').trim();
+    const modele = getField(row, 'modele', 'model').trim();
+    const taille = getField(row, 'taille', 'size').trim();
+    const prixRaw = getField(row, 'prix', 'price').replace(',', '.');
+    const stockRaw = getField(row, 'stock', 'quantity', 'qty', 'quantite');
+    const prix = parseFloat(prixRaw);
+    const stock = parseInt(stockRaw, 10);
+
+    if (!cat || !modele || !taille || isNaN(prix) || isNaN(stock)) {
+      report.errors++;
+      continue;
+    }
+
+    ensureTaxonomyForImport(cat, modele, taille, report);
+
+    // En mode merge : cherche le produit actif correspondant
+    // En mode replace : ils sont tous tombstones, on push toujours du nouveau
+    const existing = (mode === 'merge')
+      ? produits.find(p => !p.deletedAt && p.categorie === cat && p.modele === modele && p.taille === taille)
+      : null;
+
+    if (existing) {
+      existing.prix = prix;
+      existing.stock = stock;
+      existing.lastModified = now;
+      existing.stockSetAt = now;
+      report.maj++;
+    } else {
+      const newId = produits.length ? Math.max(...produits.map(p => p.id)) + 1 : 1;
+      produits.push({
+        id: newId, categorie: cat, modele, taille, prix, stock,
+        lastModified: now, stockSetAt: now
+      });
+      report.ajoutes++;
+    }
+  }
+
+  taxoSave();
+  save();
+  if (typeof cloudClearPushFp === 'function') cloudClearPushFp();
+  return report;
+}
+
+// Déclenche le file picker, puis parse et montre la modal de confirmation
+function demarrerImportStockCSV() {
+  const input = document.getElementById('input-stock-csv');
+  input.value = '';
+  input.onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = parseCSV(text);
+      if (parsed.rows.length === 0) {
+        showToast('CSV vide ou illisible', 'error');
+        return;
+      }
+      // Valide qu'on a bien les colonnes attendues
+      const headers = parsed.headers;
+      const requis = ['categorie', 'modele', 'taille', 'prix', 'stock'];
+      const synonymes = { categorie: ['category'], modele: ['model'], taille: ['size'],
+                          prix: ['price'], stock: ['quantity', 'qty', 'quantite'] };
+      const manquants = requis.filter(r => !headers.includes(r)
+        && !(synonymes[r] || []).some(s => headers.includes(s)));
+      if (manquants.length > 0) {
+        showToast('Colonnes manquantes : ' + manquants.join(', '), 'error');
+        return;
+      }
+      ouvrirImportStockConfirm(parsed.rows);
+    } catch (err) {
+      showToast('Erreur lecture CSV : ' + err.message, 'error');
+    }
+  };
+  input.click();
+}
+
+// Modal de confirmation avec choix du mode d'import
+function ouvrirImportStockConfirm(rows) {
+  let modal = document.getElementById('modal-import-stock');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-import-stock';
+    modal.className = 'hidden fixed inset-0 modal-bg z-50 flex items-end sm:items-center justify-center';
+    modal.innerHTML = `
+      <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:w-96 p-4 max-h-[95vh] overflow-y-auto">
+        <h3 class="text-lg font-bold mb-2">📥 Import stock CSV</h3>
+        <p id="import-stock-count" class="text-sm text-slate-600 mb-3"></p>
+        <div class="space-y-2 mb-3">
+          <label class="flex items-start gap-2 bg-slate-50 p-3 rounded-lg cursor-pointer">
+            <input type="radio" name="import-mode" value="merge" checked class="mt-1">
+            <div>
+              <div class="font-semibold text-sm">Ajouter / Mettre à jour</div>
+              <div class="text-xs text-slate-600">Les produits existants sont mis à jour (prix + stock). Les nouveaux sont ajoutés.</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-2 bg-red-50 p-3 rounded-lg cursor-pointer border border-red-200">
+            <input type="radio" name="import-mode" value="replace" class="mt-1">
+            <div>
+              <div class="font-semibold text-sm text-red-900">⚠️ Remplacer tout</div>
+              <div class="text-xs text-red-700">Supprime tous les produits actifs puis importe. Les ventes passées sont conservées.</div>
+            </div>
+          </label>
+        </div>
+        <div class="flex gap-2">
+          <button id="btn-import-stock-cancel" class="flex-1 bg-slate-300 py-3 rounded-lg font-semibold">Annuler</button>
+          <button id="btn-import-stock-go" class="flex-1 bg-amber-600 text-white py-3 rounded-lg font-semibold">Importer</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('btn-import-stock-cancel').addEventListener('click', () => modal.classList.add('hidden'));
+    document.getElementById('btn-import-stock-go').addEventListener('click', () => {
+      const mode = modal.querySelector('input[name="import-mode"]:checked').value;
+      const report = appliquerImportStockCSV(modal._rows, mode);
+      renderCaisse(); renderStock(); updateHeader();
+      modal.classList.add('hidden');
+      const parts = [];
+      if (report.ajoutes) parts.push(`${report.ajoutes} ajoutés`);
+      if (report.maj) parts.push(`${report.maj} MAJ`);
+      if (report.remplaces) parts.push(`${report.remplaces} remplacés`);
+      const taxoParts = [];
+      if (report.categoriesCrees) taxoParts.push(`${report.categoriesCrees} cat.`);
+      if (report.modelesCrees) taxoParts.push(`${report.modelesCrees} modèles`);
+      if (report.taillesCrees) taxoParts.push(`${report.taillesCrees} tailles`);
+      if (taxoParts.length) parts.push('créés : ' + taxoParts.join(' + '));
+      if (report.errors) parts.push(`⚠ ${report.errors} lignes invalides`);
+      showToast('✓ Import : ' + (parts.join(' · ') || 'rien à faire'));
+    });
+  }
+  modal._rows = rows;
+  document.getElementById('import-stock-count').textContent =
+    rows.length + ' ligne' + (rows.length > 1 ? 's' : '') + ' détectée' + (rows.length > 1 ? 's' : '') + ' dans le CSV.';
+  modal.classList.remove('hidden');
 }
 
 function resetSession() {
@@ -2272,6 +2539,11 @@ document.getElementById('panier-toggle-zone').addEventListener('click', togglePa
 document.getElementById('btn-annuler').addEventListener('click', annulerDerniere);
 document.getElementById('btn-vider').addEventListener('click', viderPanier);
 document.getElementById('btn-ajouter-produit').addEventListener('click', ouvrirAjoutProduit);
+
+// Import / Export stock CSV
+document.getElementById('btn-stock-csv-template').addEventListener('click', downloadStockTemplate);
+document.getElementById('btn-stock-csv-import').addEventListener('click', demarrerImportStockCSV);
+document.getElementById('btn-stock-csv-export').addEventListener('click', exporterStockCSV);
 document.getElementById('btn-fond').addEventListener('click', setFondCaisse);
 document.getElementById('btn-comptage').addEventListener('click', comptageFinal);
 document.getElementById('btn-export-csv').addEventListener('click', exporterCSV);

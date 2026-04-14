@@ -58,6 +58,38 @@ Pour voir et ajuster ton inventaire.
 
 Le stock se décompte automatiquement à chaque vente — pas besoin d'y penser.
 
+### 📊 Import / Export stock en CSV (préparer un marché)
+
+Pour les événements où tu veux préparer ton inventaire tranquillement à la maison dans Excel ou LibreOffice au lieu de tout saisir sur le tel.
+
+Dans l'onglet Stock, la carte orange **"Import / Export stock (CSV)"** avec 3 boutons :
+
+1. **📄 Modèle** — télécharge un fichier `modele_stock.csv` avec des exemples. Ouvre-le dans Excel, remplis-le, enregistre-le.
+2. **📥 Importer** — charge ton CSV. Une fenêtre te propose 2 modes :
+   - **Ajouter / Mettre à jour** (recommandé) : les produits déjà présents voient leur prix et stock mis à jour. Les nouveaux sont ajoutés. **Choisis ça en début de marché** pour réinitialiser les stocks sans rien perdre d'autre.
+   - **⚠️ Remplacer tout** : supprime tous les produits actifs puis importe. À utiliser pour un catalogue complètement neuf. Les ventes passées restent conservées.
+3. **📤 Exporter** — génère `stock_YYYY-MM-DD.csv` avec ton stock actuel. Utile pour :
+   - Garder un backup avant un marché
+   - Modifier en masse les prix dans Excel puis réimporter
+   - Repartir avec le même catalogue sur un autre marché
+
+### Format du CSV
+
+Une ligne d'en-tête puis une ligne par produit. Séparateur `;` (convention française). Les accents dans les entêtes sont acceptés.
+
+```csv
+categorie;modele;taille;prix;stock
+T-Shirt;Loup;M;20;5
+T-Shirt;Loup;L;20;5
+Pull;Tiki;L;35;3
+Tote bag;Mandala;Unique;15;10
+Body;Lion;3 mois;18;4
+```
+
+Les prix peuvent utiliser la virgule ou le point (`19,50` et `19.50` marchent tous les deux).
+
+**Bon à savoir** : si ton CSV contient une catégorie, un modèle ou une taille qui n'existe pas encore dans l'app (par exemple une nouvelle catégorie "Tote bag"), **elle sera créée automatiquement** lors de l'import. Tu peux ensuite personnaliser sa couleur ou son emoji via ⚙ Référentiel.
+
 ### ⚙ Gérer le référentiel (catégories, modèles, tailles personnalisées)
 
 À côté du bouton "+ Ajouter un produit", le bouton **⚙ Référentiel** ouvre une fenêtre où tu peux créer librement :

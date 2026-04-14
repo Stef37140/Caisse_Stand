@@ -7,9 +7,66 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 ## [Unreleased]
 
 ### À venir
-- Images produits (remplacement des emojis) — V3.3
-- Archivage des sessions clôturées — V3.4
-- Rendu monnaie avancé avec coupures rapides — V3.5
+- Images produits (remplacement des emojis) — V3.4
+- Archivage des sessions clôturées — V3.5
+- Rendu monnaie avancé avec coupures rapides — V3.6
+
+---
+
+## [3.3.0] — Import / Export stock CSV
+
+Pour préparer l'inventaire dans Excel / LibreOffice en amont d'un marché
+et l'importer en un clic. Complète l'export CSV des ventes existant.
+
+### Ajouté
+
+- **Section "📊 Import / Export stock (CSV)"** dans l'onglet Stock avec
+  3 boutons : 📄 Modèle / 📥 Importer / 📤 Exporter.
+- **Bouton "📄 Modèle"** télécharge un `modele_stock.csv` prêt à remplir
+  avec 5 exemples couvrant plusieurs types (T-Shirt, Pull, Tote bag, Body).
+- **Bouton "📤 Exporter"** produit un `stock_YYYY-MM-DD.csv` du stock
+  actif actuel (utile pour repartir avec le même catalogue au marché
+  suivant, ou pour le modifier en masse dans Excel).
+- **Bouton "📥 Importer"** avec modal de confirmation offrant 2 modes :
+  - **Ajouter / Mettre à jour** (défaut) : merge par (categorie, modele,
+    taille). Les produits existants sont mis à jour (prix + stock reset
+    à la valeur CSV). Les nouveaux sont ajoutés.
+  - **⚠️ Remplacer tout** : tombstone tous les produits actifs puis
+    import depuis CSV. Les ventes passées sont conservées. Mis en
+    évidence en rouge pour éviter le clic accidentel.
+- **Parser CSV tolérant** (`parseCSV`) :
+  - BOM UTF-8 auto-géré
+  - Séparateur `;` ou `,` auto-détecté à partir de la 1re ligne
+  - Guillemets d'échappement standards (`""` pour un guillemet dans la
+    valeur, valeurs avec `;` supportées)
+  - Normalisation des headers (accents, casse, ponctuation) :
+    `Catégorie` → `categorie`, `Size` → `size`, etc.
+  - Synonymes acceptés : `category`/`categorie`, `model`/`modele`,
+    `size`/`taille`, `price`/`prix`, `quantity`/`qty`/`stock`
+  - Prix français accepté (virgule en séparateur décimal : `19,50`)
+- **Auto-création de la taxonomie** : si le CSV référence une catégorie /
+  modèle / taille qui n'existe pas, elle est créée à la volée avec :
+  - Catégorie : première couleur libre de la palette
+  - Modèle : emoji 👕 par défaut (à personnaliser via ⚙ Référentiel)
+  - Taille : ordre = max actuel + 1
+- Rapport détaillé en toast après import : `X ajoutés · Y MAJ ·
+  Z remplacés · créés : N cat. + M modèles + T tailles · ⚠ K invalides`
+- `cloudClearPushFp()` invalidé après import pour propager au cloud.
+- Cohérence : le CSV exporté a **exactement le même format** que celui
+  attendu à l'import → round-trip possible.
+
+### Modifié
+
+- Le bouton "📥 Export CSV" de l'onglet Bilan (qui exporte les ventes)
+  devient "📥 Export ventes CSV" pour éviter la confusion avec le nouveau
+  bouton "📤 Exporter" du stock.
+- Nom du fichier de l'export ventes : `caisse_YYYY-MM-DD.csv` →
+  `ventes_YYYY-MM-DD.csv` (plus explicite).
+
+### Technique
+
+- CACHE_VERSION bumpé v3.2.1 → v3.3.0 (déclenche la bannière de MAJ).
+- Title : `v3.2` → `v3.3`.
 
 ---
 

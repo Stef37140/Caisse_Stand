@@ -546,19 +546,21 @@ function renderTaxoTab() {
   }
   const type = taxoTypeFromTab(taxoCurrentTab);
   list.innerHTML = items.map(it => {
+    // it.couleur vient d'une whitelist (PALETTE_COULEURS) mais on sécurise
+    // quand même au cas où un payload sync transporterait une valeur arbitraire.
     const visu = taxoCurrentTab === 'categories'
-      ? `<span class="${it.couleur || 'bg-slate-600'} w-5 h-5 rounded inline-block mr-2 align-middle"></span>`
+      ? `<span class="${esc(it.couleur || 'bg-slate-600')} w-5 h-5 rounded inline-block mr-2 align-middle"></span>`
       : taxoCurrentTab === 'modeles'
-        ? `<span class="text-xl mr-2 align-middle">${it.icone || '👕'}</span>`
+        ? `<span class="text-xl mr-2 align-middle">${esc(it.icone || '👕')}</span>`
         : '<span class="text-slate-400 text-xs mr-2">#' + (it.ordre ?? 0) + '</span>';
     const nomEnc = encodeURIComponent(it.nom);
     const used = taxoEstUtilise(type, it.nom);
     return `
       <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-lg">
-        <div class="flex-1 min-w-0 truncate">${visu}<span class="font-semibold text-sm align-middle">${it.nom}</span></div>
+        <div class="flex-1 min-w-0 truncate">${visu}<span class="font-semibold text-sm align-middle">${esc(it.nom)}</span></div>
         ${used ? '<span class="text-[10px] text-slate-400">utilisé</span>' : ''}
-        <button data-action="taxo-edit" data-nom="${nomEnc}" class="bg-slate-200 px-2 py-1 rounded text-xs">✏</button>
-        <button data-action="taxo-del"  data-nom="${nomEnc}" class="${used ? 'bg-slate-100 text-slate-300' : 'bg-red-100 text-red-700'} px-2 py-1 rounded text-xs">🗑</button>
+        <button data-action="taxo-edit" data-nom="${esc(nomEnc)}" class="bg-slate-200 px-2 py-1 rounded text-xs">✏</button>
+        <button data-action="taxo-del"  data-nom="${esc(nomEnc)}" class="${used ? 'bg-slate-100 text-slate-300' : 'bg-red-100 text-red-700'} px-2 py-1 rounded text-xs">🗑</button>
       </div>
     `;
   }).join('');
@@ -576,11 +578,11 @@ function ouvrirTaxoForm(nom) {
     form.innerHTML = `
       <h4 class="font-semibold text-sm mb-2">${item ? 'Éditer la catégorie' : 'Nouvelle catégorie'}</h4>
       <label class="block text-xs font-semibold mb-1">Nom (ex : Tote bag, Body, Débardeur)</label>
-      <input id="taxo-form-nom" type="text" maxlength="30" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" ${item ? 'disabled' : ''} value="${item ? item.nom : ''}">
+      <input id="taxo-form-nom" type="text" maxlength="30" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" ${item ? 'disabled' : ''} value="${esc(item ? item.nom : '')}">
       <label class="block text-xs font-semibold mb-1">Couleur (boutons en caisse)</label>
       <div class="grid grid-cols-6 gap-1 mb-3">
         ${PALETTE_COULEURS.map(c => `
-          <button type="button" data-couleur="${c.cls}" title="${c.nom}" class="taxo-couleur ${c.cls} h-10 rounded ${item && item.couleur === c.cls ? 'ring-4 ring-blue-500' : ''}"></button>
+          <button type="button" data-couleur="${esc(c.cls)}" title="${esc(c.nom)}" class="taxo-couleur ${c.cls} h-10 rounded ${item && item.couleur === c.cls ? 'ring-4 ring-blue-500' : ''}"></button>
         `).join('')}
       </div>
       <div class="flex gap-2">
@@ -593,9 +595,9 @@ function ouvrirTaxoForm(nom) {
     form.innerHTML = `
       <h4 class="font-semibold text-sm mb-2">${item ? 'Éditer le modèle' : 'Nouveau modèle'}</h4>
       <label class="block text-xs font-semibold mb-1">Nom du dessin / motif</label>
-      <input id="taxo-form-nom" type="text" maxlength="40" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" ${item ? 'disabled' : ''} value="${item ? item.nom : ''}">
+      <input id="taxo-form-nom" type="text" maxlength="40" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" ${item ? 'disabled' : ''} value="${esc(item ? item.nom : '')}">
       <label class="block text-xs font-semibold mb-1">Emoji ou icône</label>
-      <input id="taxo-form-icone" type="text" maxlength="4" class="w-full border rounded-lg px-3 py-2 mb-1 text-3xl text-center" placeholder="🐺" value="${item ? (item.icone || '') : ''}">
+      <input id="taxo-form-icone" type="text" maxlength="4" class="w-full border rounded-lg px-3 py-2 mb-1 text-3xl text-center" placeholder="🐺" value="${esc(item ? (item.icone || '') : '')}">
       <p class="text-xs text-slate-500 mb-3">Sur mobile : tap sur le 🌐 du clavier puis sélectionne un emoji. Si vide, 👕 par défaut.</p>
       <div class="flex gap-2">
         <button id="taxo-form-cancel" class="flex-1 bg-slate-300 py-2 rounded-lg text-sm font-semibold">Annuler</button>
@@ -607,7 +609,7 @@ function ouvrirTaxoForm(nom) {
     form.innerHTML = `
       <h4 class="font-semibold text-sm mb-2">${item ? 'Éditer la taille' : 'Nouvelle taille'}</h4>
       <label class="block text-xs font-semibold mb-1">Nom (XS, S, M, L, XL, XXL, 36, 38, Unique…)</label>
-      <input id="taxo-form-nom" type="text" maxlength="10" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" ${item ? 'disabled' : ''} value="${item ? item.nom : ''}">
+      <input id="taxo-form-nom" type="text" maxlength="10" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" ${item ? 'disabled' : ''} value="${esc(item ? item.nom : '')}">
       <label class="block text-xs font-semibold mb-1">Ordre d'affichage (plus petit = en premier)</label>
       <input id="taxo-form-ordre" type="number" class="w-full border rounded-lg px-3 py-2 mb-3 text-sm" value="${ordreParDefaut}">
       <div class="flex gap-2">
@@ -644,7 +646,7 @@ function ouvrirTaxoForm(nom) {
     } else if (taxoCurrentTab === 'modeles') {
       payload.icone = (document.getElementById('taxo-form-icone').value || '').trim() || '👕';
     } else {
-      const o = parseInt(document.getElementById('taxo-form-ordre').value);
+      const o = parseInt(document.getElementById('taxo-form-ordre').value, 10);
       payload.ordre = isNaN(o) ? 0 : o;
     }
     taxoUpsert(taxoTypeFromTab(taxoCurrentTab), payload);
@@ -688,16 +690,44 @@ function supprimerTaxoItem(nom) {
 // touchée par les ventes — elle ne change qu'à un comptage manuel (édition
 // produit, boutons +/− stock, ou création).
 
-// Compte les unités vendues d'un produit depuis un timestamp donné.
-function ventesDuProduitDepuis(produitId, sinceIso) {
-  let n = 0;
+// Cache pour ventesDuProduitDepuis : évite de reparcourir toutes les ventes
+// à chaque appel de stockDispo (appelé par produit × à chaque renderCaisse).
+// Invalidé via ventesCacheBump() dès qu'on mute `ventes`.
+let _ventesIndex = null; // Map<produitId, Array<{ts, qte}>> triée par ts
+let _ventesIndexVersion = -1;
+let _ventesVersion = 0;
+function ventesCacheBump() { _ventesVersion++; }
+function buildVentesIndex() {
+  const idx = new Map();
   for (const v of ventes) {
     const ts = v.timestamp || '';
-    if (ts <= sinceIso) continue;
     if (!Array.isArray(v.items)) continue;
     for (const it of v.items) {
-      if (it.id === produitId) n += it.qte;
+      if (typeof it.id !== 'number') continue;
+      let arr = idx.get(it.id);
+      if (!arr) { arr = []; idx.set(it.id, arr); }
+      arr.push({ ts, qte: it.qte });
     }
+  }
+  for (const arr of idx.values()) arr.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  return idx;
+}
+
+// Compte les unités vendues d'un produit depuis un timestamp donné.
+// Utilise le cache _ventesIndex — reconstruit à chaque bump de version.
+function ventesDuProduitDepuis(produitId, sinceIso) {
+  if (_ventesIndex === null || _ventesIndexVersion !== _ventesVersion) {
+    _ventesIndex = buildVentesIndex();
+    _ventesIndexVersion = _ventesVersion;
+  }
+  const arr = _ventesIndex.get(produitId);
+  if (!arr) return 0;
+  let n = 0;
+  // Ventes triées par ts croissant : on itère en sens inverse et on stoppe
+  // dès qu'on passe sous le cutoff. Plus rapide quand sinceIso est récent.
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (arr[i].ts <= sinceIso) break;
+    n += arr[i].qte;
   }
   return n;
 }
@@ -742,6 +772,25 @@ function initDevice() {
 // ============================
 function nowIso() { return new Date().toISOString(); }
 
+// Échappe les caractères HTML sensibles. À utiliser SYSTÉMATIQUEMENT pour
+// toute chaîne d'origine utilisateur (ou pire : reçue via sync d'un autre
+// téléphone) interpolée dans un template `innerHTML`. Sans ça, un nom de
+// modèle / deviceLabel malicieux peut injecter du HTML arbitraire.
+// Cas d'emploi : esc(p.modele), esc(v.deviceLabel), esc(it.nom)…
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// En cas d'échec localStorage (quota plein / mode privé Safari),
+// l'état mémoire est déjà mis à jour mais pas persisté : prochaine
+// session = perte. Pas de rollback automatique : coût vs bénéfice
+// trop élevé pour cette app. Cible V3+ : migration IndexedDB.
 function save() {
   try {
     localStorage.setItem('caisse_data', JSON.stringify({
@@ -761,8 +810,20 @@ function load() {
       ventes = d.ventes || [];
       fondCaisse = d.fondCaisse || 0;
       lastBackup = d.lastBackup || null;
+      ventesCacheBump();
       migrateProduits();
-    } catch(e) { initDemo(); }
+    } catch(e) {
+      // JSON localStorage corrompu : on ne veut pas écraser silencieusement
+      // un backup potentiellement récupérable. On log en console (pour debug
+      // ultérieur via devtools) et on prévient l'utilisateur avant de
+      // retomber sur l'état démo.
+      console.error('[load] caisse_data illisible, fallback demo :', e);
+      try { localStorage.setItem('caisse_data_corrupt_' + Date.now(), raw); } catch(_) {}
+      if (typeof showToast === 'function') {
+        showToast('Données locales illisibles — état démo restauré', 'error');
+      }
+      initDemo();
+    }
   } else {
     initDemo();
   }
@@ -836,6 +897,7 @@ function applySyncPayload(payload) {
   if (Array.isArray(payload.produits)) {
     for (const remote of payload.produits) {
       if (!remote || typeof remote.id !== 'number' || !remote.lastModified) {
+        console.warn('[sync] produit invalide rejeté :', remote);
         report.invalides++; continue;
       }
       const local = produits.find(p => p.id === remote.id);
@@ -857,7 +919,10 @@ function applySyncPayload(payload) {
     const knownKeys = new Map();
     ventes.forEach(v => knownKeys.set(venteDedupeKey(v), v));
     for (const v of payload.ventes) {
-      if (!venteEstValide(v)) { report.invalides++; continue; }
+      if (!venteEstValide(v)) {
+        console.warn('[sync] vente invalide rejetée :', v);
+        report.invalides++; continue;
+      }
       const k = venteDedupeKey(v);
       if (!knownKeys.has(k)) {
         ventes.push(v);
@@ -867,6 +932,7 @@ function applySyncPayload(payload) {
         report.ventesIgnorees++;
       }
     }
+    if (report.ventesAjoutees) ventesCacheBump();
     // Tri chronologique post-merge
     ventes.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
   }
@@ -879,7 +945,10 @@ function applySyncPayload(payload) {
       if (!Array.isArray(incoming)) continue;
       const localList = taxonomie[type];
       for (const remote of incoming) {
-        if (!remote || !remote.nom || !remote.lastModified) { report.invalides++; continue; }
+        if (!remote || !remote.nom || !remote.lastModified) {
+          console.warn('[sync] taxo item invalide rejeté :', type, remote);
+          report.invalides++; continue;
+        }
         const local = localList.find(x => x.nom === remote.nom);
         if (!local) {
           localList.push({ ...remote });
@@ -948,81 +1017,120 @@ function showToast(msg, type = 'success') {
 // ============================
 // MODAL GÉNÉRIQUE (remplace prompt/confirm)
 // ============================
+//
+// Contrat d'API pour `genModal(opts)` :
+//
+//   opts.title        : string, titre en tête de modale (textContent)
+//   opts.message      : string, paragraphe explicatif (textContent)
+//   opts.input        : bool, afficher un champ de saisie
+//   opts.inputType    : 'number' (défaut) | 'text'
+//   opts.inputMode    : attribut HTML inputMode (override auto selon inputType)
+//   opts.maxLength    : int, maxlength du champ (30 par défaut en text)
+//   opts.inputValue   : valeur pré-remplie. PEUT être 0 (nombre). Si
+//                       `undefined`, on laisse vide (cas `comptageFinal`).
+//   opts.placeholder  : string, placeholder HTML du champ
+//   opts.showRendu    : bool, affiche le bloc "rendu monnaie" + coupures
+//                       (uniquement combiné avec input=true et totalDu)
+//   opts.totalDu      : number, total à rendre (pour le calcul de monnaie)
+//   opts.okLabel      : libellé du bouton principal (défaut 'OK')
+//   opts.cancelLabel  : libellé du bouton secondaire (défaut 'Annuler')
+//   opts.onOk         : callback appelé au clic sur OK. DOIT appeler
+//                       `fermerGenModal()` lui-même — pas de close auto
+//                       (ça permet de garder la modale ouverte en cas
+//                       d'erreur de validation).
+//
+// Les éléments DOM ciblés (gen-title, gen-input, gen-rendu, …) sont
+// mémoïsés via `genDOM` pour éviter les lookups répétés sur le chemin
+// chaud d'encaissement.
 let genCallback = null;
+const genDOM = {
+  title:   null, message: null, wrap:    null, inp:     null,
+  extra:   null, coup:    null, rendu:   null, ok:      null,
+  cancel:  null, modal:   null,
+};
+function getGenDOM() {
+  if (!genDOM.title) {
+    genDOM.title   = document.getElementById('gen-title');
+    genDOM.message = document.getElementById('gen-message');
+    genDOM.wrap    = document.getElementById('gen-input-wrap');
+    genDOM.inp     = document.getElementById('gen-input');
+    genDOM.extra   = document.getElementById('gen-extra');
+    genDOM.coup    = document.getElementById('gen-coupures');
+    genDOM.rendu   = document.getElementById('gen-rendu');
+    genDOM.ok      = document.getElementById('gen-ok');
+    genDOM.cancel  = document.getElementById('gen-cancel');
+    genDOM.modal   = document.getElementById('modal-gen');
+  }
+  return genDOM;
+}
 
 function genModal(opts) {
-  // opts : { title, message, input (bool), inputType ('number'|'text'), inputValue,
-  //         inputMode, maxLength, okLabel, cancelLabel, onOk, showRendu (bool), totalDu }
-  document.getElementById('gen-title').textContent = opts.title || '';
-  document.getElementById('gen-message').textContent = opts.message || '';
-  const wrap = document.getElementById('gen-input-wrap');
-  const inp = document.getElementById('gen-input');
+  const d = getGenDOM();
+  d.title.textContent = opts.title || '';
+  d.message.textContent = opts.message || '';
   if (opts.input) {
-    wrap.classList.remove('hidden');
+    d.wrap.classList.remove('hidden');
     const type = opts.inputType || 'number';
-    inp.type = type;
-    inp.inputMode = opts.inputMode || (type === 'number' ? 'decimal' : 'text');
-    inp.maxLength = opts.maxLength || (type === 'text' ? 30 : 524288); // 524288 = défaut HTML
-    inp.value = opts.inputValue !== undefined ? opts.inputValue : '';
-    inp.placeholder = opts.placeholder || '';
-    setTimeout(() => inp.focus(), 100);
+    d.inp.type = type;
+    d.inp.inputMode = opts.inputMode || (type === 'number' ? 'decimal' : 'text');
+    d.inp.maxLength = opts.maxLength || (type === 'text' ? 30 : 524288); // 524288 = défaut HTML
+    d.inp.value = opts.inputValue !== undefined ? opts.inputValue : '';
+    d.inp.placeholder = opts.placeholder || '';
+    setTimeout(() => d.inp.focus(), 100);
   } else {
-    wrap.classList.add('hidden');
+    d.wrap.classList.add('hidden');
   }
-  const extra = document.getElementById('gen-extra');
-  const coup  = document.getElementById('gen-coupures');
   if (opts.showRendu) {
-    extra.classList.remove('hidden');
-    coup.classList.remove('hidden');
-    document.getElementById('gen-rendu').textContent = '0,00 €';
+    d.extra.classList.remove('hidden');
+    d.coup.classList.remove('hidden');
+    d.rendu.textContent = '0,00 €';
     const recompute = () => {
-      const donne = parseFloat(inp.value);
+      const donne = parseFloat(d.inp.value);
       const rendu = isNaN(donne) ? 0 : donne - opts.totalDu;
-      const el = document.getElementById('gen-rendu');
       if (rendu < 0) {
-        el.textContent = `Manque ${(-rendu).toFixed(2)} €`;
-        el.className = 'text-3xl font-bold text-red-600';
+        d.rendu.textContent = `Manque ${(-rendu).toFixed(2)} €`;
+        d.rendu.className = 'text-3xl font-bold text-red-600';
       } else {
-        el.textContent = rendu.toFixed(2) + ' €';
-        el.className = 'text-3xl font-bold text-green-900';
+        d.rendu.textContent = rendu.toFixed(2) + ' €';
+        d.rendu.className = 'text-3xl font-bold text-green-900';
       }
     };
-    inp.oninput = recompute;
+    d.inp.oninput = recompute;
     // Affiche un montant proprement (entier si possible, sinon 2 décimales)
     const fmt = (n) => Number.isInteger(n) ? String(n) : (Math.round(n * 100) / 100).toFixed(2);
     // Coupures additives : chaque tap empile la valeur sur le champ.
     // Cas d'usage : client donne 2×5 + 10 pour 20 € → tap +5, +5, +10.
-    coup.querySelectorAll('.gen-coup').forEach(btn => {
+    d.coup.querySelectorAll('.gen-coup').forEach(btn => {
       btn.onclick = (e) => {
         e.preventDefault();
         const c = parseFloat(btn.dataset.coupure);
-        const cur = parseFloat(inp.value);
+        const cur = parseFloat(d.inp.value);
         const next = (isNaN(cur) ? 0 : cur) + c;
-        inp.value = fmt(next);
+        d.inp.value = fmt(next);
         recompute();
       };
     });
     // Bouton ↺ : remet le champ à 0 pour recommencer à empiler les coupures.
     // Permet aussi de sortir rapidement du pré-remplissage égal au total dû.
-    const resetBtn = coup.querySelector('[data-coup-reset]');
+    const resetBtn = d.coup.querySelector('[data-coup-reset]');
     if (resetBtn) resetBtn.onclick = (e) => {
       e.preventDefault();
-      inp.value = '0';
+      d.inp.value = '0';
       recompute();
     };
   } else {
-    extra.classList.add('hidden');
-    coup.classList.add('hidden');
-    inp.oninput = null;
+    d.extra.classList.add('hidden');
+    d.coup.classList.add('hidden');
+    d.inp.oninput = null;
   }
-  document.getElementById('gen-ok').textContent = opts.okLabel || 'OK';
-  document.getElementById('gen-cancel').textContent = opts.cancelLabel || 'Annuler';
+  d.ok.textContent = opts.okLabel || 'OK';
+  d.cancel.textContent = opts.cancelLabel || 'Annuler';
   genCallback = opts.onOk || null;
-  document.getElementById('modal-gen').classList.remove('hidden');
+  d.modal.classList.remove('hidden');
 }
 
 function fermerGenModal() {
-  document.getElementById('modal-gen').classList.add('hidden');
+  getGenDOM().modal.classList.add('hidden');
   genCallback = null;
 }
 
@@ -1067,8 +1175,8 @@ function renderCaisse() {
     grid.innerHTML = cats.map(cat => {
       const total = actifs.filter(p => p.categorie === cat).reduce((s,p) => s + stockDispo(p.id), 0);
       return `
-        <button data-action="selcat" data-cat="${cat}" class="btn-product ${categorieCouleur(cat)} text-white p-4 rounded-lg shadow col-span-3 flex justify-between items-center">
-          <span class="text-lg font-bold">${cat}</span>
+        <button data-action="selcat" data-cat="${esc(cat)}" class="btn-product ${categorieCouleur(cat)} text-white p-4 rounded-lg shadow col-span-3 flex justify-between items-center">
+          <span class="text-lg font-bold">${esc(cat)}</span>
           <span class="text-xs opacity-90">${total} dispo</span>
         </button>
       `;
@@ -1082,23 +1190,23 @@ function renderCaisse() {
       const total = actifs.filter(p => p.categorie === selCat && p.modele === m).reduce((s,p) => s + stockDispo(p.id), 0);
       const dispo = total > 0 ? '' : 'opacity-40';
       return `
-        <button data-action="selmodele" data-modele="${encodeURIComponent(m)}" class="btn-product ${categorieCouleur(selCat)} text-white p-2 rounded-lg shadow ${dispo}">
-          <div class="text-2xl">${modeleIcone(m)}</div>
-          <div class="text-xs font-bold mt-1 leading-tight">${m}</div>
+        <button data-action="selmodele" data-modele="${esc(encodeURIComponent(m))}" class="btn-product ${categorieCouleur(selCat)} text-white p-2 rounded-lg shadow ${dispo}">
+          <div class="text-2xl">${esc(modeleIcone(m))}</div>
+          <div class="text-xs font-bold mt-1 leading-tight">${esc(m)}</div>
           <div class="text-xs opacity-80">${total} dispo</div>
         </button>
       `;
     }).join('');
   } else if (currentLevel === 2) {
     bc1.classList.remove('hidden');
-    bcStep1.innerHTML = `<button data-action="backcat" class="text-blue-700 underline">${selCat}</button> › ${selModele}`;
+    bcStep1.innerHTML = `<button data-action="backcat" class="text-blue-700 underline">${esc(selCat)}</button> › ${esc(selModele)}`;
     const tailles = actifs.filter(p => p.categorie === selCat && p.modele === selModele);
     grid.innerHTML = tailles.map(p => {
       const dispo = stockDispo(p.id);
       const cls = dispo > 0 ? '' : 'opacity-40 pointer-events-none';
       return `
         <button data-action="addpanier" data-id="${p.id}" class="btn-product ${categorieCouleur(p.categorie)} text-white p-3 rounded-lg shadow ${cls}">
-          <div class="text-xl font-bold">${p.taille}</div>
+          <div class="text-xl font-bold">${esc(p.taille)}</div>
           <div class="text-sm font-bold">${p.prix} €</div>
           <div class="text-xs opacity-90">dispo: ${dispo}</div>
         </button>
@@ -1150,7 +1258,7 @@ function renderPanier() {
     ? '<div class="text-slate-400 text-xs text-center py-2">Panier vide</div>'
     : panier.map((i, idx) => `
       <div class="flex justify-between items-center text-sm bg-slate-50 px-2 py-1 rounded gap-2">
-        <span class="flex-1 min-w-0 truncate">${i.qte}× ${i.label}</span>
+        <span class="flex-1 min-w-0 truncate">${i.qte}× ${esc(i.label)}</span>
         <span class="font-semibold w-14 text-right">${i.qte * i.prix} €</span>
         <button data-action="panier-dec" data-idx="${idx}" aria-label="Retirer une unité"
                 class="w-8 h-8 flex items-center justify-center rounded bg-slate-300 text-slate-800 font-bold active:bg-slate-400">−</button>
@@ -1203,10 +1311,14 @@ function finaliserVente(mode, total) {
     date: now.toLocaleDateString('fr-FR'),
     deviceId,
     deviceLabel,
-    items: JSON.parse(JSON.stringify(panier)),
+    // Shallow clone par ligne : évite les coûts de JSON.parse(JSON.stringify)
+    // sur le chemin chaud d'encaissement. Les lignes panier sont des objets
+    // plats {id, label, prix, qte} → un spread suffit.
+    items: panier.map(i => ({ ...i })),
     total,
     mode
   });
+  ventesCacheBump();
   panier = [];
   save();
   renderCaisse();
@@ -1227,6 +1339,12 @@ function encaisser(mode) {
     // d'empiler les coupures (+5, +10…) directement sans tap ↺ préalable.
     // Si le client paie pile, l'utilisateur tape +X jusqu'à atteindre total
     // (ou saisit directement le montant au clavier).
+    //
+    // Note : on NE bloque volontairement pas la validation si le montant
+    // donné est inférieur au total (le rendu affiche alors "Manque X €" en
+    // rouge). C'est intentionnel : sur un stand, on peut accepter un
+    // arrondi à la baisse ou un geste commercial sans que l'appli s'en
+    // mêle. L'opérateur humain reste maître de la décision.
     genModal({
       title: `Encaissement cash : ${total} €`,
       message: 'Empile les coupures reçues du client (rendu en direct)',
@@ -1257,6 +1375,7 @@ function annulerDerniere() {
       // V3.1+ : on ne ré-incrémente plus p.stock manuellement. Retirer la
       // vente du tableau suffit : stockDispo() la déduira d'office.
       ventes = ventes.filter(x => x.id !== v.id);
+      ventesCacheBump();
       save();
       renderCaisse();
       updateHeader();
@@ -1309,7 +1428,7 @@ function renderStock() {
   const cats = [...new Set(filtres.map(p => p.categorie))];
   let html = '';
   cats.forEach(cat => {
-    html += `<h3 class="font-bold text-sm text-slate-700 mt-3 mb-1">${cat}</h3>`;
+    html += `<h3 class="font-bold text-sm text-slate-700 mt-3 mb-1">${esc(cat)}</h3>`;
     const items = filtres.filter(p => p.categorie === cat);
     html += items.map(p => {
       const stk = stockEffectif(p);
@@ -1324,9 +1443,9 @@ function renderStock() {
       return `
       <div data-action="editprod" data-id="${p.id}" class="flex items-center gap-2 ${ligneClass} p-2 rounded-lg active:bg-slate-200 cursor-pointer">
         <div class="${categorieCouleur(cat)} w-2 h-10 rounded"></div>
-        <div class="text-xl">${modeleIcone(p.modele)}</div>
+        <div class="text-xl">${esc(modeleIcone(p.modele))}</div>
         <div class="flex-1">
-          <div class="font-semibold text-sm">${p.modele} · ${p.taille}</div>
+          <div class="font-semibold text-sm">${esc(p.modele)} · ${esc(p.taille)}</div>
           <div class="text-xs text-slate-500">${p.prix} €</div>
         </div>
         <button data-action="stockminus" data-id="${p.id}" class="bg-slate-200 w-8 h-8 rounded font-bold">−</button>
@@ -1424,7 +1543,7 @@ function sauverProduit() {
   const modele = document.getElementById('inp-modele').value;
   const taille = document.getElementById('inp-taille').value;
   const prix = parseFloat(document.getElementById('inp-prix').value);
-  const stock = parseInt(document.getElementById('inp-stock').value);
+  const stock = parseInt(document.getElementById('inp-stock').value, 10);
   if (isNaN(prix) || isNaN(stock)) { showToast("Prix et stock requis", 'error'); return; }
   const now = nowIso();
   if (editingId) {
@@ -1494,13 +1613,13 @@ function renderHisto() {
   const top = Object.entries(compte).sort((a,b) => b[1]-a[1]).slice(0,5);
   document.getElementById('top-produits').innerHTML = top.length === 0
     ? '<div class="text-slate-400 text-xs">Aucune vente</div>'
-    : top.map(([nom, qte]) => `<div class="flex justify-between bg-slate-50 px-2 py-1 rounded"><span>${nom}</span><span class="font-bold">${qte}</span></div>`).join('');
+    : top.map(([nom, qte]) => `<div class="flex justify-between bg-slate-50 px-2 py-1 rounded"><span>${esc(nom)}</span><span class="font-bold">${qte}</span></div>`).join('');
 
   document.getElementById('liste-ventes').innerHTML = ventes.length === 0
     ? '<div class="text-slate-400">Aucune vente</div>'
     : [...ventes].sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).map(v => `
       <div class="bg-slate-50 px-2 py-1 rounded flex justify-between">
-        <span>${v.date || ''} ${v.heure} · ${v.items.map(i => i.qte+'×'+i.label).join(', ')} <span class="text-slate-400">[${v.deviceLabel || '?'}]</span></span>
+        <span>${esc(v.date || '')} ${esc(v.heure || '')} · ${v.items.map(i => i.qte+'×'+esc(i.label)).join(', ')} <span class="text-slate-400">[${esc(v.deviceLabel || '?')}]</span></span>
         <span class="font-bold ${v.mode === 'cash' ? 'text-green-700' : 'text-blue-700'}">${v.total}€</span>
       </div>
     `).join('');
@@ -1571,6 +1690,13 @@ function downloadBlob(content, filename, mime) {
   }
 }
 
+// Échappe une valeur pour CSV : double les guillemets, encapsule si contient
+// séparateur / guillemet / retour ligne. Partagé par les exports stock et ventes.
+function csvEscape(v) {
+  const s = v === null || v === undefined ? '' : String(v);
+  return /[;",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
 function exporterCSV() {
   if (ventes.length === 0) {
     showToast('Aucune vente à exporter', 'error');
@@ -1582,7 +1708,19 @@ function exporterCSV() {
     const cat = p ? p.categorie : '';
     const mod = p ? p.modele : i.label;
     const taille = p ? p.taille : '';
-    csv += `${v.date || ''};${v.heure};${v.deviceLabel || ''};${cat};${mod};${taille};${i.qte};${i.prix};${i.qte*i.prix};${v.mode};${v.timestamp || ''}\n`;
+    csv += [
+      csvEscape(v.date || ''),
+      csvEscape(v.heure),
+      csvEscape(v.deviceLabel || ''),
+      csvEscape(cat),
+      csvEscape(mod),
+      csvEscape(taille),
+      i.qte,
+      i.prix,
+      i.qte * i.prix,
+      csvEscape(v.mode),
+      csvEscape(v.timestamp || ''),
+    ].join(';') + '\n';
   }));
   const stamp = new Date().toISOString().slice(0,10);
   if (downloadBlob('\ufeff' + csv, `ventes_${stamp}.csv`, 'text/csv;charset=utf-8')) {
@@ -1654,11 +1792,7 @@ function exporterStockCSV() {
   let csv = 'categorie;modele;taille;prix;stock\n';
   actifs.forEach(p => {
     const stock = stockEffectif(p); // on exporte le stock actuellement dispo, pas la baseline
-    const esc = (v) => {
-      const s = String(v);
-      return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-    };
-    csv += `${esc(p.categorie)};${esc(p.modele)};${esc(p.taille)};${p.prix};${stock}\n`;
+    csv += `${csvEscape(p.categorie)};${csvEscape(p.modele)};${csvEscape(p.taille)};${p.prix};${stock}\n`;
   });
   const stamp = new Date().toISOString().slice(0,10);
   if (downloadBlob('\ufeff' + csv, `stock_${stamp}.csv`, 'text/csv;charset=utf-8')) {
@@ -1855,6 +1989,7 @@ function resetSession() {
     onOk: () => {
       exporterJSON(true);
       ventes = [];
+      ventesCacheBump();
       panier = [];
       fondCaisse = 0;
       document.getElementById('ecart-result').classList.add('hidden');
@@ -1875,10 +2010,12 @@ function resetSession() {
 // ============================
 function exporterJSON(silent) {
   const data = {
-    version: 2,
+    version: 3, // v3 = embarque la taxonomie (v2 ne l'avait pas)
     exportedAt: new Date().toISOString(),
     deviceId, deviceLabel,
-    produits, ventes, fondCaisse
+    produits, ventes, fondCaisse,
+    taxonomie,
+    lastBackup
   };
   const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g, '-');
   const name = `caisse_backup_${deviceLabel.replace(/\s+/g,'_')}_${stamp}.json`;
@@ -1958,6 +2095,19 @@ async function handleImport(e, mode) {
         produits = data.produits || produits;
         ventes = data.ventes || [];
         fondCaisse = data.fondCaisse || 0;
+        // On restaure aussi la taxonomie et le lastBackup. On NE restaure
+        // pas deviceId / deviceLabel : ils identifient physiquement cet
+        // appareil, et écraser ces champs casserait la dédup / sync.
+        if (data.taxonomie && typeof data.taxonomie === 'object') {
+          taxonomie = {
+            categories: Array.isArray(data.taxonomie.categories) ? data.taxonomie.categories : [],
+            modeles:    Array.isArray(data.taxonomie.modeles)    ? data.taxonomie.modeles    : [],
+            tailles:    Array.isArray(data.taxonomie.tailles)    ? data.taxonomie.tailles    : [],
+          };
+          taxoSave();
+        }
+        if (data.lastBackup) lastBackup = data.lastBackup;
+        ventesCacheBump();
         showToast(`Restauré depuis ${file.name}`);
         break;
       }
@@ -1999,6 +2149,8 @@ async function handleImport(e, mode) {
     }
   }
 
+  if (totalNew > 0) ventesCacheBump();
+
   if (mode === 'merge') {
     const parts = [`✓ ${totalNew} ajoutées`];
     if (totalAlready) parts.push(`${totalAlready} déjà là`);
@@ -2020,6 +2172,10 @@ async function handleImport(e, mode) {
   updateHeader();
   renderHisto();
   renderSync();
+  // Après un restore, produits et taxonomie ont pu changer : on rafraîchit
+  // aussi Caisse et Stock pour que le nouvel état soit immédiatement visible.
+  renderCaisse();
+  renderStock();
   e.target.value = '';
 }
 
@@ -2041,7 +2197,7 @@ function renderSync() {
     ? '<div class="text-slate-400">Aucune vente</div>'
     : entries.map(([label, d]) => `
       <div class="bg-slate-50 p-2 rounded">
-        <div class="font-semibold">${label} ${label === deviceLabel ? '<span class="text-blue-600">(cet appareil)</span>' : ''}</div>
+        <div class="font-semibold">${esc(label)} ${label === deviceLabel ? '<span class="text-blue-600">(cet appareil)</span>' : ''}</div>
         <div class="text-slate-600">${d.count} ventes · 💵 ${d.cash} € · 💳 ${d.cb} € · <strong>Total ${d.cash + d.cb} €</strong></div>
       </div>
     `).join('');
@@ -2253,7 +2409,7 @@ function handleQRDetected(text) {
   }
   const [, batchId, idxTotal, chunk] = parts;
   const [idxStr, totalStr] = idxTotal.split('/');
-  const idx = parseInt(idxStr), total = parseInt(totalStr);
+  const idx = parseInt(idxStr, 10), total = parseInt(totalStr, 10);
   if (!batchId || !idx || !total) return;
 
   // Nouveau batch ?
@@ -2331,7 +2487,7 @@ function renderQRLastSync() {
   } else {
     const lines = entries.map(([id, ts]) => {
       const d = new Date(ts);
-      return `· ${id.slice(0,12)} : ${d.toLocaleString('fr-FR')}`;
+      return `· ${esc(id.slice(0,12))} : ${esc(d.toLocaleString('fr-FR'))}`;
     });
     el.innerHTML = 'Dernières syncs :<br>' + lines.join('<br>');
   }
@@ -2351,7 +2507,9 @@ let cloudLastPushAt = null;
 let cloudLastPullAt = null;
 let cloudLastPushFp = null;   // empreinte du dernier payload effectivement poussé
 let cloudPushesSkipped = 0;   // compteur debug : combien de pushes évités
+let cloudBusy = false;        // lock anti-course pour cloudSyncRoundTrip
 const CLOUD_POLL_MS = 30000; // 30 secondes
+const CLOUD_PEER = 'cloud';   // clé pseudo-peer pour syncState (delta cloud)
 
 function cloudConfigLoad() {
   try { cloudConfig = JSON.parse(localStorage.getItem('caisse_cloud_config') || 'null'); }
@@ -2415,7 +2573,13 @@ async function cloudPush(opts) {
   // opts.force = true pour ignorer l'empreinte (utilisé par "Sync maintenant")
   if (!cloudIsActive()) return false;
   if (!navigator.onLine) { cloudSetStatus('offline'); return false; }
-  const payload = buildSyncPayload(''); // état complet de cet appareil
+  // IMPORTANT : on pousse l'ÉTAT COMPLET de l'appareil, pas un delta.
+  // Le serveur KV (functions/api/sync.js) écrase l'entrée state:<deviceId>
+  // à chaque POST : si on envoyait un delta, un peer qui pull perdrait
+  // tout l'historique antérieur de cet appareil. Pour du vrai delta-push,
+  // il faudrait que le serveur fasse un merge (pas le cas aujourd'hui).
+  // Le skip-fingerprint ci-dessous évite quand même les writes redondants.
+  const payload = buildSyncPayload('');
   const fp = cloudPayloadFingerprint(payload);
 
   // Skip si rien n'a changé depuis le dernier push réussi (sauf si forcé).
@@ -2435,6 +2599,7 @@ async function cloudPush(opts) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     cloudLastPushAt = nowIso();
     cloudLastPushFp = fp;
+    syncStateSet(CLOUD_PEER, payload.at || cloudLastPushAt);
     try { localStorage.setItem('caisse_cloud_last_push_fp', fp); } catch(e) {}
     return true;
   } catch (e) {
@@ -2480,12 +2645,26 @@ async function cloudSyncRoundTrip(opts) {
   // opts.force = true depuis le bouton "Sync maintenant" : pousse même si
   // l'empreinte est identique (utile pour retester après une erreur serveur).
   if (!cloudIsActive()) {
-    showToast('Sync cloud non configurée', 'error');
+    // Appel manuel non configuré : on prévient l'utilisateur.
+    // Appels automatiques (poll, visibilitychange) : silencieux.
+    if (opts && opts.force) showToast('Sync cloud non configurée', 'error');
     return;
   }
-  const pushed = await cloudPush(opts);
-  const pulled = await cloudPull();
-  if (pushed || pulled) cloudUpdateLastSyncDisplay();
+  // Lock anti-course : deux round-trips concurrents gâcheraient du quota
+  // et pourraient laisser le status cloud dans un état incohérent.
+  if (cloudBusy) return;
+  cloudBusy = true;
+  try {
+    const pushed = await cloudPush(opts);
+    const pulled = await cloudPull();
+    if (pushed || pulled) cloudUpdateLastSyncDisplay();
+    // Si push ET pull réussis, force explicitement le status "ok".
+    // Sans ça, un push OK suivi d'un pull qui laisse 'syncing' / 'err'
+    // pouvait piéger l'état (vu lors de pulls qui ne s'auto-résolvent pas).
+    if (pushed && pulled) cloudSetStatus('ok');
+  } finally {
+    cloudBusy = false;
+  }
 }
 
 function startCloudPolling() {
@@ -2555,14 +2734,15 @@ function ouvrirCloudConfig() {
         const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
         if (res.ok) {
           const d = await res.json();
-          result.innerHTML = `<span class="text-emerald-600">✓ Connexion OK (${d.count || 0} appareils enregistrés)</span>`;
+          const count = parseInt(d.count, 10) || 0;
+          result.innerHTML = `<span class="text-emerald-600">✓ Connexion OK (${count} appareils enregistrés)</span>`;
         } else if (res.status === 401) {
           result.innerHTML = '<span class="text-red-600">✗ Token invalide (HTTP 401)</span>';
         } else {
-          result.innerHTML = `<span class="text-red-600">✗ HTTP ${res.status}</span>`;
+          result.innerHTML = `<span class="text-red-600">✗ HTTP ${esc(res.status)}</span>`;
         }
       } catch (e) {
-        result.innerHTML = `<span class="text-red-600">✗ Erreur réseau : ${e.message}</span>`;
+        result.innerHTML = `<span class="text-red-600">✗ Erreur réseau : ${esc(e.message)}</span>`;
       }
     });
   }
@@ -2576,6 +2756,16 @@ function ouvrirCloudConfig() {
 // ============================
 // EVENT DELEGATION (remplace tous les onclick inline)
 // ============================
+// Règles :
+//  - Les boutons générés dynamiquement dans les vues (grille caisse, stock,
+//    panier, taxonomie) portent un attribut `data-action=...`. Un seul
+//    handler `click` au niveau document les route vers la bonne fonction.
+//  - Les handlers au sein d'une ligne composite (ex : ligne stock cliquable
+//    = `data-action=editprod` avec à l'intérieur stockplus/stockminus)
+//    appellent `e.stopPropagation()` pour empêcher le bubble vers le
+//    container. Si tu ajoutes un nouveau `data-action` imbriqué dans un
+//    container cliquable, pense à `stopPropagation` côté enfant.
+//  - `data-tab` et `data-taxotab` sont traités en amont avant `data-action`.
 document.addEventListener('click', (e) => {
   const target = e.target.closest('[data-action], [data-tab], [data-taxotab]');
   if (!target) return;
@@ -2598,12 +2788,12 @@ document.addEventListener('click', (e) => {
   if (action === 'selcat') { selCat = target.dataset.cat; currentLevel = 1; renderCaisse(); }
   else if (action === 'selmodele') { selModele = decodeURIComponent(target.dataset.modele); currentLevel = 2; renderCaisse(); }
   else if (action === 'backcat') { currentLevel = 1; selModele = null; renderCaisse(); }
-  else if (action === 'addpanier') { ajouterAuPanier(parseInt(target.dataset.id)); }
-  else if (action === 'editprod') { ouvrirEditProduit(parseInt(target.dataset.id)); }
-  else if (action === 'stockplus') { e.stopPropagation(); modifStock(parseInt(target.dataset.id), 1); }
-  else if (action === 'stockminus') { e.stopPropagation(); modifStock(parseInt(target.dataset.id), -1); }
-  else if (action === 'panier-dec') { e.stopPropagation(); decrementerLignePanier(parseInt(target.dataset.idx)); }
-  else if (action === 'panier-del') { e.stopPropagation(); supprimerLignePanier(parseInt(target.dataset.idx)); }
+  else if (action === 'addpanier') { ajouterAuPanier(parseInt(target.dataset.id, 10)); }
+  else if (action === 'editprod') { ouvrirEditProduit(parseInt(target.dataset.id, 10)); }
+  else if (action === 'stockplus') { e.stopPropagation(); modifStock(parseInt(target.dataset.id, 10), 1); }
+  else if (action === 'stockminus') { e.stopPropagation(); modifStock(parseInt(target.dataset.id, 10), -1); }
+  else if (action === 'panier-dec') { e.stopPropagation(); decrementerLignePanier(parseInt(target.dataset.idx, 10)); }
+  else if (action === 'panier-del') { e.stopPropagation(); supprimerLignePanier(parseInt(target.dataset.idx, 10)); }
   else if (action === 'taxo-edit')  { e.stopPropagation(); ouvrirTaxoForm(decodeURIComponent(target.dataset.nom)); }
   else if (action === 'taxo-del')   { e.stopPropagation(); supprimerTaxoItem(decodeURIComponent(target.dataset.nom)); }
 });

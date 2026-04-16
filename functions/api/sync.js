@@ -48,8 +48,14 @@ function checkAuth(request, env) {
   if (!env.SYNC_TOKEN) return false;
   const header = request.headers.get('Authorization') || '';
   if (!header.startsWith('Bearer ')) return false;
-  // Comparaison à temps constant pour éviter les timing attacks
   const provided = header.slice(7);
+  // Note : la comparaison n'est PAS strictement à temps constant — on
+  // court-circuite sur la longueur, ce qui peut trahir la taille du token.
+  // Pas un vrai risque en pratique : SYNC_TOKEN est un secret aléatoire
+  // long (32+ chars recommandé) généré manuellement. Un attaquant qui
+  // connaîtrait la longueur n'en tire rien d'exploitable.
+  // La boucle XOR ci-dessous, elle, est bien constant-time sur les tokens
+  // de même taille (empêche de deviner caractère par caractère).
   if (provided.length !== env.SYNC_TOKEN.length) return false;
   let diff = 0;
   for (let i = 0; i < provided.length; i++) {

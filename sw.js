@@ -91,9 +91,19 @@ self.addEventListener('fetch', (event) => {
             caches.open(CACHE_VERSION).then((cache) => cache.put(req, resClone));
           }
           return res;
-        }).catch(() => {
+        }).catch(async () => {
           // Offline + non caché : fallback vers index.html si c'est une navigation
-          if (req.mode === 'navigate') return caches.match('./index.html');
+          if (req.mode === 'navigate') {
+            const shell = await caches.match('./index.html');
+            if (shell) return shell;
+          }
+          // Sinon on renvoie une 504 explicite plutôt qu'un undefined qui
+          // ferait lever "Failed to fetch" côté client. Permet au code JS
+          // de détecter proprement la panne réseau + cache miss.
+          return new Response('', {
+            status: 504,
+            statusText: 'Gateway Timeout (offline, not cached)',
+          });
         });
       })
     );

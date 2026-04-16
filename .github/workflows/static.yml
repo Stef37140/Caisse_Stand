@@ -1,4 +1,15 @@
 # Simple workflow for deploying static content to GitHub Pages
+#
+# ⚠ Limitation GitHub Pages vs Cloudflare Pages :
+# Le fichier `_headers` à la racine du repo (utilisé pour désactiver le
+# cache HTTP de sw.js / index.html / manifest.json) N'EST PAS pris en
+# compte par GitHub Pages — c'est une fonctionnalité spécifique à
+# Cloudflare Pages. GitHub Pages applique son propre cache par défaut.
+#
+# Conséquence : sur iOS Safari, le service worker peut rester bloqué sur
+# une ancienne version pendant plusieurs heures après un déploiement.
+# Si vous ciblez GitHub Pages, documenter dans le README la commande
+# "🧹 Forcer la mise à jour" ou déployer plutôt sur Cloudflare Pages.
 name: Deploy static content to Pages
 
 on:
